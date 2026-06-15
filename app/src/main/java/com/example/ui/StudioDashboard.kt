@@ -48,10 +48,14 @@ import com.example.audio.AudioEngine
 import com.example.data.database.AudioProjectEntity
 import com.example.data.database.PresetEntity
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.PI
 import kotlin.math.sin
+import kotlin.math.cos
+import kotlin.math.abs
+import android.widget.Toast
 
 // --- PREMIUM NEON PALETTE SPECIFICATION ---
 val SpaceObsidian = Color(0xFF04060B)
@@ -499,69 +503,197 @@ fun MainDAWInterface(viewModel: SoundLabViewModel) {
 fun MainTopHeader(viewModel: SoundLabViewModel) {
     var globalSearchOpen by remember { mutableStateOf(false) }
     var searchText by remember { mutableStateOf("") }
+    var showPromoAlerts by remember { mutableStateOf(false) }
     val currentTab by viewModel.currentTab.collectAsState()
     val notifications by viewModel.notifications.collectAsState()
+    
+    // Live ticking studio clock
+    var timeString by remember { mutableStateOf("02:06:39 UTC") }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val sdf = SimpleDateFormat("HH:mm:ss 'UTC'", Locale.getDefault())
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
+            timeString = sdf.format(Date())
+            delay(1000)
+        }
+    }
+
+    // Dynamic greeting based on clock
+    val hour = Calendar.getInstance(TimeZone.getTimeZone("UTC")).get(Calendar.HOUR_OF_DAY)
+    val greetingText = when {
+        hour in 0..11 -> "Good Morning"
+        hour in 12..16 -> "Good Afternoon"
+        else -> "Good Evening"
+    }
+
+    // Pulse animation for the AI and live audio logos
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val alphaAnim by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(SpaceObsidian.copy(0.9f))
+                .background(SpaceObsidian.copy(0.85f))
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .border(1.dp, Brush.verticalGradient(listOf(GlassBorder.copy(alpha = 0.25f), Color.Transparent)), RoundedCornerShape(0.dp))
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Interactive Hamburger menu opens Side Drawer
+            // Section A: Animated Logo & Profile Header
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Interactive Hamburger Menu Button
                 IconButton(
                     onClick = { viewModel.setSideDrawerOpen(true) },
                     modifier = Modifier
-                        .size(44.dp)
-                        .background(Color.White.copy(0.04f), RoundedCornerShape(50))
-                        .border(1.dp, GlassBorder.copy(0.4f), RoundedCornerShape(50))
+                        .size(38.dp)
+                        .background(Color.White.copy(0.03f), RoundedCornerShape(8.dp))
+                        .border(1.dp, GlassBorder.copy(0.4f), RoundedCornerShape(8.dp))
                         .testTag("hamburger_menu_button")
                 ) {
-                    Text("☰", color = NeonCyan, fontSize = 16.sp)
+                    Text("☰", color = NeonCyan, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 }
 
-                Column {
+                // Logo with flashing Neon status bubble and greeting
+                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(NeonCyan.copy(alpha = alphaAnim))
+                        )
+                        Text(
+                            text = "BRO SOUND LAB AI",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                    
                     Text(
-                        text = "BRO SOUND LAB AI",
+                        text = "$greetingText, Achmad!",
                         color = NeonCyan,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Black,
-                        fontFamily = FontFamily.Monospace,
-                        letterSpacing = 1.sp
-                    )
-                    Text(
-                        text = "DAW CONSOLE CORE // $currentTab",
-                        color = Color.White.copy(0.5f),
-                        fontSize = 8.sp,
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
                 }
             }
 
-            // Quick Operations Row
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                // Real-time notification log toggle
-                var showPromoAlerts by remember { mutableStateOf(false) }
+            // Section B: Dedicated Studio Status Flags (Sync, Battery, AI) - Hidden on extra small width
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 6.dp)
+            ) {
+                // Cloud Sync Status badge
+                Box(
+                    modifier = Modifier
+                        .background(MintGreen.copy(0.12f), RoundedCornerShape(4.dp))
+                        .border(0.5.dp, MintGreen.copy(0.4f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("☁️", fontSize = 7.sp)
+                        Text("ONLINE", color = MintGreen, fontSize = 7.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Battery Optimization Badge
+                Box(
+                    modifier = Modifier
+                        .background(GoldenAmber.copy(0.12f), RoundedCornerShape(4.dp))
+                        .border(0.5.dp, GoldenAmber.copy(0.4f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🔋", fontSize = 7.sp)
+                        Text("OPTIMAL", color = GoldenAmber, fontSize = 7.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // AI Status Badge
+                Box(
+                    modifier = Modifier
+                        .background(HotViolet.copy(0.12f), RoundedCornerShape(4.dp))
+                        .border(0.5.dp, HotViolet.copy(0.4f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🔮", fontSize = 7.sp)
+                        Text("GEMINI-3.5", color = HotViolet, fontSize = 7.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Clock indicator
+                Text(
+                    text = timeString,
+                    color = Color.White.copy(0.45f),
+                    fontSize = 8.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            }
+
+            // Section C: Standard Dashboard Control Items (Search, Settings, Notifications, Profile)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Interactive settings button
+                IconButton(
+                    onClick = {
+                        viewModel.addNotification("System Settings diagnostics validated.")
+                    },
+                    modifier = Modifier
+                        .size(34.dp)
+                        .background(Color.White.copy(0.02f), RoundedCornerShape(50))
+                ) {
+                    Text("⚙️", fontSize = 14.sp)
+                }
+
+                // Notification Center with BadgedBox overlay
                 IconButton(
                     onClick = { showPromoAlerts = !showPromoAlerts },
-                    modifier = Modifier.size(40.dp).background(Color.White.copy(0.03f), RoundedCornerShape(50))
+                    modifier = Modifier
+                        .size(34.dp)
+                        .background(Color.White.copy(0.02f), RoundedCornerShape(50))
                 ) {
                     BadgedBox(
                         badge = {
                             if (notifications.isNotEmpty()) {
                                 Badge(containerColor = HotViolet) {
-                                    Text(notifications.size.toString(), color = Color.White, fontSize = 8.sp)
+                                    Text(notifications.size.toString(), color = Color.White, fontSize = 7.sp)
                                 }
                             }
                         }
                     ) {
-                        Text("🔔", fontSize = 16.sp)
+                        Text("🔔", fontSize = 14.sp)
                     }
                 }
 
@@ -569,51 +701,63 @@ fun MainTopHeader(viewModel: SoundLabViewModel) {
                 IconButton(
                     onClick = { globalSearchOpen = true },
                     modifier = Modifier
-                        .size(44.dp)
-                        .background(GlassCardBg, RoundedCornerShape(50))
-                        .border(1.dp, NeonCyan.copy(0.3f), RoundedCornerShape(50))
+                        .size(34.dp)
+                        .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(50))
                         .testTag("global_search_icon_button")
                 ) {
-                    Text("🔍", color = Color.White, fontSize = 16.sp)
+                    Text("🔍", color = Color.White, fontSize = 14.sp)
                 }
 
-                // Notification quick-dropdown panel
-                DropdownMenu(
-                    expanded = showPromoAlerts,
-                    onDismissRequest = { showPromoAlerts = false },
+                // Profile Avatar Indicator
+                Box(
                     modifier = Modifier
-                        .background(Color(0xFF0F121F))
-                        .border(1.dp, GlassBorder, RoundedCornerShape(8.dp))
-                        .width(260.dp)
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Brush.radialGradient(listOf(HotViolet.copy(0.3f), Color.Transparent)))
+                        .border(1.dp, GlassBorder, RoundedCornerShape(50))
+                        .clickable { viewModel.setCurrentTab("PROFILE") },
+                    contentAlignment = Alignment.Center
                 ) {
+                    Text("👨‍🎤", fontSize = 15.sp)
+                }
+            }
+        }
+
+        // Dropdown Notifications log drawer
+        DropdownMenu(
+            expanded = showPromoAlerts,
+            onDismissRequest = { showPromoAlerts = false },
+            modifier = Modifier
+                .background(Color(0xFF0F121F))
+                .border(1.dp, GlassBorder, RoundedCornerShape(8.dp))
+                .width(260.dp)
+        ) {
+            DropdownMenuItem(
+                text = {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("SYSTEM LOGS", color = NeonCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("CLEAR", color = HotViolet, fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { viewModel.clearNotifications() })
+                    }
+                },
+                onClick = {}
+            )
+            Divider(color = Color.White.copy(0.08f))
+            if (notifications.isEmpty()) {
+                DropdownMenuItem(
+                    text = { Text("No logs reported. Core silent.", color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp) },
+                    onClick = {}
+                )
+            } else {
+                notifications.take(5).forEach { message ->
                     DropdownMenuItem(
                         text = {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("SYSTEM LOGS", color = NeonCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                                Text("CLEAR", color = HotViolet, fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { viewModel.clearNotifications() })
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Box(modifier = Modifier.size(5.dp).clip(RoundedCornerShape(50)).background(MintGreen).align(Alignment.CenterVertically))
+                                Text(message, color = Color.White, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             }
                         },
                         onClick = {}
                     )
-                    Divider(color = Color.White.copy(0.08f))
-                    if (notifications.isEmpty()) {
-                        DropdownMenuItem(
-                            text = { Text("No logs reported. Core silent.", color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp) },
-                            onClick = {}
-                        )
-                    } else {
-                        notifications.take(5).forEach { message ->
-                            DropdownMenuItem(
-                                text = {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Box(modifier = Modifier.size(5.dp).clip(RoundedCornerShape(50)).background(MintGreen).align(Alignment.CenterVertically))
-                                        Text(message, color = Color.White, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    }
-                                },
-                                onClick = {}
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -1046,6 +1190,3287 @@ fun FullScreenCreateModal(viewModel: SoundLabViewModel) {
 
 @Composable
 fun HomeScreenView(viewModel: SoundLabViewModel) {
+    val activeProject by viewModel.selectedProject.collectAsState()
+    val allProjects by viewModel.allProjects.collectAsState()
+    val allPresets by viewModel.allPresets.collectAsState()
+    
+    // UI Local Stateful overlays for advanced DAW Tools
+    var visSettingsOpen by remember { mutableStateOf(false) }
+    var visDecayPeriod by remember { mutableStateOf(0.7f) }
+    var visScaleDb by remember { mutableStateOf(48f) }
+    
+    var fileImporterOpen by remember { mutableStateOf(false) }
+    var audioCropperOpen by remember { mutableStateOf(false) }
+    var karaokeSplitterOpen by remember { mutableStateOf(false) }
+    var aiMusicComposerOpen by remember { mutableStateOf(false) }
+    var audioRepairOpen by remember { mutableStateOf(false) }
+    var advancedRecorderSettingsOpen by remember { mutableStateOf(false) }
+    
+    // AI Assistant inputs & simulated output console
+    var aiAssistantInput by remember { mutableStateOf("") }
+    var aiAssistantOutput by remember { mutableStateOf("Co-Creator Ready. Choose a fast command below or type details to orchestrate models.") }
+    var aiIsThinking by remember { mutableStateOf(false) }
+    
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val coroutineScope = rememberCoroutineScope()
+
+    // Infinite animation loops for visualization dynamics
+    val transition = rememberInfiniteTransition(label = "daw_oscilloscope")
+    val sweepFloat by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f * PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "oscilloscopeSweep"
+    )
+    
+    val bounceFloat by transition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = FastOutLinearInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "oscilloscopeBounce"
+    )
+
+    // Layout Root Container with Floating Record FAB overlaid
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SpaceObsidian)
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("home_screen_scrollable_container"),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // ==========================================
+            // Section 1: Dynamic Greeting & Audio Tip Panel
+            // ==========================================
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Brush.linearGradient(listOf(Color(0x0E7B2CBF), Color(0x0300E5FF))))
+                        .border(1.dp, GlassBorder.copy(0.18f), RoundedCornerShape(14.dp))
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Brush.linearGradient(listOf(ElectricIndigo, HotViolet))),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("⚡", fontSize = 18.sp)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Achmad Tohirin • Producer Console",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "MASTERING TIP: Saturating the 16kHz vocal high-end band with 12ms delay feedbacks generates gorgeous digital air. Try custom EQ profiles below.",
+                            color = NeonCyan,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            lineHeight = 12.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 2: Realtime Live Audio Visualization Deck
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "LIVE AUDIO VISUALIZER (TAP ANALYZER // LONG-PRESS CFG)",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xFF070912))
+                            .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = {
+                                        // Tap opens the analyzer tab tool
+                                        viewModel.setCurrentTab("TOOLS")
+                                        viewModel.setSelectedToolId("ANALYZER")
+                                        Toast.makeText(context, "Navigated to Analyzer diagnostic deck.", Toast.LENGTH_SHORT).show()
+                                    },
+                                    onLongPress = {
+                                        visSettingsOpen = true
+                                    }
+                                )
+                            }
+                    ) {
+                        // Drawing grid lines, FFT spectrum columns, VU led lights, and Soundwave oscillographs
+                        Canvas(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+                            val w = size.width
+                            val h = size.height
+
+                            // Draw subtle horizontal grid ticks (Classic DAW cathode scopes look)
+                            val gridLines = 5
+                            val gridStep = h / gridLines
+                            for (i in 0 until gridLines) {
+                                drawLine(
+                                    color = Color.White.copy(0.04f),
+                                    start = Offset(0f, i * gridStep),
+                                    end = Offset(w, i * gridStep),
+                                    strokeWidth = 1.dp.toPx()
+                                )
+                            }
+
+                            // 1. Draw Simulated 16-Band FFT Columns
+                            val barCount = 18
+                            val barGap = 6.dp.toPx()
+                            val totalGapWidth = barGap * (barCount - 1)
+                            val barWidth = (w * 0.7f - totalGapWidth) / barCount
+
+                            for (i in 0 until barCount) {
+                                val amplitudeMultiplier = sin(sweepFloat + (i * 0.45f)) * 0.35f + 0.55f
+                                val barHeight = h * 0.75f * amplitudeMultiplier * bounceFloat
+                                val startX = i * (barWidth + barGap)
+
+                                // Dual-color glowing metallic gradient for columns
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        listOf(HotViolet, NeonCyan)
+                                    ),
+                                    topLeft = Offset(startX, h - barHeight),
+                                    size = Size(barWidth, barHeight),
+                                    alpha = 0.82f
+                                )
+                            }
+
+                            // 2. Draw Simulated Stereo VU Level Meter (L / R Channel)
+                            val vuStartX = w * 0.75f
+                            val vuWidth = 12.dp.toPx()
+                            val segmentCount = 10
+                            val segmentHeight = (h * 0.85f) / segmentCount
+                            val segmentGap = 2.dp.toPx()
+
+                            for (ch in 0..1) { // Left = 0, Right = 1
+                                val currentChStartX = vuStartX + ch * (vuWidth + 14.dp.toPx())
+                                val chRandomAmp = if (ch == 0) bounceFloat else (bounceFloat * 0.9f + 0.05f)
+
+                                for (s in 0 until segmentCount) {
+                                    val isLit = (segmentCount - s).toFloat() / segmentCount <= chRandomAmp
+                                    val segmentColor = when {
+                                        s < 2 -> Color.Red // peaks
+                                        s < 5 -> GoldenAmber // high warnings
+                                        else -> MintGreen // normal safety levels
+                                    }
+                                    val segmentAlpha = if (isLit) 0.95f else 0.08f
+
+                                    drawRoundRect(
+                                        color = segmentColor,
+                                        topLeft = Offset(currentChStartX, s * (segmentHeight + segmentGap)),
+                                        size = Size(vuWidth, segmentHeight),
+                                        cornerRadius = CornerRadius(1.dp.toPx()),
+                                        alpha = segmentAlpha
+                                    )
+                                }
+                            }
+
+                            // 3. Draw overlay continuous Waveform Line
+                            val points = 64
+                            val path = androidx.compose.ui.graphics.Path()
+                            val waveWidth = w * 0.7f
+                            val waveYCenter = h * 0.4f
+
+                            for (p in 0..points) {
+                                val x = (p.toFloat() / points) * waveWidth
+                                val y = waveYCenter + sin(sweepFloat + (p * 0.35f)) * 14.dp.toPx() * bounceFloat
+
+                                if (p == 0) {
+                                    path.moveTo(x, y)
+                                } else {
+                                    path.lineTo(x, y)
+                                }
+                            }
+
+                            drawPath(
+                                path = path,
+                                color = NeonCyan,
+                                style = Stroke(width = 2.dp.toPx()),
+                                alpha = 0.9f
+                            )
+                        }
+
+                        // Top overlays displaying real-time parameters
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(28.dp)
+                                .background(Color.Black.copy(0.4f))
+                                .align(Alignment.TopCenter)
+                                .padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "DECAY: ${(visDecayPeriod * 100).toInt()}% • SCALE: ${visScaleDb.toInt()}dB SPL",
+                                color = Color.White.copy(0.55f),
+                                fontSize = 8.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Black
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(MintGreen)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 3: Quick Studio Tools (Haptic Grid of 10)
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "QUICK STUDIO TOOLS (TOUCH RESPONSIVE CORES)",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    // 10 buttons aligned inside a premium multi-item row grid
+                    val toolsList = listOf(
+                        Quadruple("RECORD", "🎙️", { viewModel.startRecording() }, NeonCyan),
+                        Quadruple("IMPORT", "📥", { fileImporterOpen = true }, NeonCyan),
+                        Quadruple("EQ", "🎛️", {
+                            viewModel.setCurrentTab("TOOLS")
+                            viewModel.setSelectedToolId("EQUALIZER")
+                        }, ElectricIndigo),
+                        Quadruple("AI MASTER", "🪄", {
+                            viewModel.setCurrentTab("TOOLS")
+                            viewModel.setSelectedToolId("AI_COCREATOR")
+                        }, ElectricIndigo),
+                        Quadruple("MIXER", "🎚️", {
+                            viewModel.setCurrentTab("TOOLS")
+                            viewModel.setSelectedToolId("MIXER")
+                        }, HotViolet),
+                        Quadruple("EDITOR", "✂️", { audioCropperOpen = true }, HotViolet),
+                        Quadruple("KARAOKE", "🎤", { karaokeSplitterOpen = true }, MintGreen),
+                        Quadruple("PODCAST", "🗣️", {
+                            // Apply broadcast podcast preset and notify
+                            viewModel.savePreset("Broadcast Vocal")
+                            viewModel.addNotification("Podcast vocal preset applied instantly.")
+                            Toast.makeText(context, "Applied broadcast profile preset to Equalizer.", Toast.LENGTH_SHORT).show()
+                        }, MintGreen),
+                        Quadruple("AI MUSIC", "🎵", { aiMusicComposerOpen = true }, GoldenAmber),
+                        Quadruple("REPAIR", "🩹", { audioRepairOpen = true }, GoldenAmber)
+                    )
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        maxItemsInEachRow = 5,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        toolsList.forEach { tool ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(58.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(GlassCardBg)
+                                    .border(1.dp, GlassBorder.copy(0.2f), RoundedCornerShape(10.dp))
+                                    .clickable { tool.action() }
+                                    .testTag("quick_studio_tool_${tool.label}"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(tool.unicode, fontSize = 20.sp)
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = tool.label,
+                                        color = tool.color,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Black,
+                                        fontFamily = FontFamily.Monospace,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 4: Continue Project (Focus Hub)
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "CONTINUE RECENT WORKSPACE SESSION",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    // Target last project dynamically or show placeholder
+                    val focalProj = allProjects.firstOrNull() ?: AudioProjectEntity(
+                        id = 9999,
+                        title = "Atmospheric Void Intro Synth",
+                        bpm = 114,
+                        keySignature = "F# Minor",
+                        notes = "Analog saturation model tracks with heavy multi-stage tape delays.",
+                        lyrics = "Silent soundwaves breathing inside the electronic neon void..."
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Brush.radialGradient(listOf(Color(0x2A131521), Color(0xFF04060B))))
+                            .border(1.5.dp, HotViolet.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Box(
+                                    modifier = Modifier
+                                        .background(HotViolet.copy(0.18f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text("LAST WORKSPACE", color = HotViolet, fontSize = 7.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = focalProj.title,
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Black,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Text(
+                                text = "⏱️ ${focalProj.bpm} BPM // ${focalProj.keySignature}",
+                                color = GoldenAmber,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Simulated Soundwave artwork inside focal session
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(0.02f))
+                                .border(0.5.dp, GlassBorder.copy(0.2f), RoundedCornerShape(8.dp))
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+                                val w = size.width
+                                val h = size.height
+                                val lines = 44
+                                val lineGap = w / lines
+
+                                for (i in 0 until lines) {
+                                    val valSin = sin(i * 0.18f) * cos(i * 0.4f)
+                                    val finalLineHeight = (h * 0.8f) * abs(valSin)
+
+                                    drawLine(
+                                        color = if (i < lines * 0.35f) HotViolet else NeonCyan.copy(0.5f),
+                                        start = Offset(i * lineGap, (h - finalLineHeight) / 2f),
+                                        end = Offset(i * lineGap, (h + finalLineHeight) / 2f),
+                                        strokeWidth = 2.dp.toPx()
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Saved: " + SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(Date(focalProj.lastSaved)),
+                                color = Color.White.copy(0.4f),
+                                fontSize = 8.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                // Delete/Discard button
+                                Button(
+                                    onClick = {
+                                        if (allProjects.isNotEmpty() && focalProj.id != 9999) {
+                                            viewModel.deleteProject(focalProj.id)
+                                            Toast.makeText(context, "Workspace discarded: ${focalProj.title}", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Cannot discard system core templates.", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(0.12f)),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp).border(0.5.dp, Color.Red.copy(0.3f), RoundedCornerShape(4.dp))
+                                ) {
+                                    Text("DISCARD", color = Color.Red, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+
+                                // Duplicate/Clone button
+                                Button(
+                                    onClick = {
+                                        viewModel.createNewProject(focalProj.title + " (Copy)")
+                                        Toast.makeText(context, "Project duplicated in Database.", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = GlassCardBg),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp).border(0.5.dp, GlassBorder.copy(0.3f), RoundedCornerShape(4.dp))
+                                ) {
+                                    Text("CLONE", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+
+                                // Continue/Edit button
+                                Button(
+                                    onClick = {
+                                        viewModel.selectProject(focalProj)
+                                        viewModel.setCurrentTab("TOOLS")
+                                        viewModel.setSelectedToolId("MIXER")
+                                        Toast.makeText(context, "Loaded DAW: ${focalProj.title}", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text("EDIT", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 5: AI sound assistant card
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "AI CO-CREATOR STUDIO COMMAND CENTER",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xFF0F0B18))
+                            .border(1.5.dp, HotViolet.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            // Blinking AI core avatar
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Brush.radialGradient(listOf(HotViolet.copy(0.5f), Color.Transparent)))
+                                    .border(1.dp, HotViolet, RoundedCornerShape(50)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("🔮", fontSize = 16.sp, modifier = Modifier.align(Alignment.Center))
+                            }
+
+                            Column {
+                                Text("AI SOUND ASSISTANT", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                Text("CO-CREATION ENGINES ACTIVE", color = NeonCyan, fontSize = 8.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+
+                        // AI Console output
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 54.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color.Black.copy(0.35f))
+                                .padding(8.dp)
+                        ) {
+                            if (aiIsThinking) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(10.dp), strokeWidth = 1.dp, color = NeonCyan)
+                                    Text("Synthesizing neural audio parameters...", color = NeonCyan, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                                }
+                            } else {
+                                Text(
+                                    text = aiAssistantOutput,
+                                    color = Color.White.copy(0.85f),
+                                    fontSize = 9.sp,
+                                    lineHeight = 12.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+
+                        // Text input & Voice mic button row
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            OutlinedTextField(
+                                value = aiAssistantInput,
+                                onValueChange = { aiAssistantInput = it },
+                                placeholder = { Text("Ask Gemini to isolate sound, write chords, split bass...", color = Color.Gray, fontSize = 9.sp, fontFamily = FontFamily.Monospace) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp)
+                                    .testTag("ai_prompt_text_field"),
+                                textStyle = LocalTextStyle.current.copy(fontSize = 9.sp, color = Color.White, fontFamily = FontFamily.Monospace),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = HotViolet,
+                                    unfocusedBorderColor = GlassBorder.copy(0.4f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                )
+                            )
+
+                            // Voice dictation microphone button
+                            IconButton(
+                                onClick = {
+                                    aiAssistantInput = "Record broadcast profile mic vocal track"
+                                    Toast.makeText(context, "Voice dictation audio recorded.", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .background(HotViolet.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
+                                    .border(1.dp, HotViolet.copy(0.4f), RoundedCornerShape(10.dp))
+                                    .testTag("voice_prompt_mic_button")
+                            ) {
+                                Text("🎙️", fontSize = 16.sp)
+                            }
+
+                            // Run button
+                            Button(
+                                onClick = {
+                                    if (aiAssistantInput.isNotEmpty()) {
+                                        keyboardController?.hide()
+                                        aiIsThinking = true
+                                        aiAssistantOutput = ""
+                                        // Execute custom mock response based on input
+                                        val prompt = aiAssistantInput
+                                        aiAssistantInput = ""
+                                        coroutineScope.launch {
+                                            delay(1500)
+                                            aiIsThinking = false
+                                            aiAssistantOutput = when {
+                                                prompt.contains("Vocal", ignoreCase = true) || prompt.contains("vocal", ignoreCase = true) ->
+                                                    "AI Separation: Vocal track successfully isolated from 'Beat Stem 1'. Separation fidelity is computed at 98.4dB SNR."
+                                                prompt.contains("Chords", ignoreCase = true) || prompt.contains("chords", ignoreCase = true) ->
+                                                    "AI Chords Composer: Generated (i - VI - III - VII) progression in F# Minor. Playback mapped to analog synth module."
+                                                prompt.contains("Master", ignoreCase = true) || prompt.contains("master", ignoreCase = true) ->
+                                                    "AI Mastering Suite: Set graphic EQ decay parameters. Added +2.4dB tube compression saturation at 250Hz. Lows gated."
+                                                else -> "AI Engine: Executed pipeline for the requested action successfully. Equalizer registers configured."
+                                            }
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                                modifier = Modifier.height(42.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp)
+                            ) {
+                                Text("RUN", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+
+                        // Presets Task pills (Interactive pills)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            maxItemsInEachRow = 3,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            val pills = listOf(
+                                "Remove Vocal" to "Isolating vocal stems...",
+                                "Master This Song" to "Applying heavy solid-state tube limiter and analog EQ outputs...",
+                                "Clean My Voice" to "Noise Gate threshold mapped to -45dB. Attenuating hiss values...",
+                                "Generate Beat" to "Generated 118 BPM deep ambient house grid...",
+                                "Fix Noise" to "Attenuating clicks, high-frequency hiss, and low-end AC rumble..."
+                            )
+
+                            pills.forEach { (label, actionResponse) ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(Color.White.copy(0.04f))
+                                        .border(1.dp, GlassBorder.copy(0.3f), RoundedCornerShape(50))
+                                        .clickable {
+                                            aiIsThinking = true
+                                            coroutineScope.launch {
+                                                delay(1200)
+                                                aiIsThinking = false
+                                                aiAssistantOutput = "AI Suite: $actionResponse"
+                                            }
+                                        }
+                                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = NeonCyan,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 6: Recent Projects Carousel (Unbounded Horizontal Scrolling)
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "RECENT PROJECTS (UNLIMITED HORIZONTAL CAROUSEL)",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    if (allProjects.isEmpty()) {
+                        // Empty state indicator
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(90.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(GlassCardBg)
+                                .border(1.dp, GlassBorder.copy(0.12f), RoundedCornerShape(12.dp))
+                                .clickable {
+                                    viewModel.createNewProject("New Atmospheric Track")
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("📂 No tracks inside DB workspace.", color = Color.White.copy(0.4f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("CLICK TO GENERATE FIRST DAW TEMPLATE", color = NeonCyan, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    } else {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(allProjects) { proj ->
+                                Column(
+                                    modifier = Modifier
+                                        .width(180.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(GlassCardBg)
+                                        .border(1.dp, GlassBorder.copy(0.3f), RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            viewModel.selectProject(proj)
+                                            viewModel.setCurrentTab("TOOLS")
+                                            viewModel.setSelectedToolId("MIXER")
+                                            Toast.makeText(context, "Loaded: ${proj.title}", Toast.LENGTH_SHORT).show()
+                                        }
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = proj.title,
+                                            color = Color.White,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Black,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text("☁️", fontSize = 8.sp)
+                                            Text("⭐️", fontSize = 8.sp, color = GoldenAmber)
+                                        }
+                                    }
+
+                                    // Minimal wave shape inside card
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(28.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color.White.copy(0.01f))
+                                    ) {
+                                        Canvas(modifier = Modifier.fillMaxSize()) {
+                                            val w = size.width
+                                            val h = size.height
+                                            val steps = 18
+
+                                            for (k in 0 until steps) {
+                                                val hFraction = sin((k + proj.id) * 0.45f) * cos((k + proj.id) * 0.9f)
+                                                val barH = h * 0.7f * abs(hFraction)
+                                                drawRect(
+                                                    color = if (proj.id % 2 == 0) NeonCyan.copy(0.6f) else HotViolet.copy(0.6f),
+                                                    topLeft = Offset(k * (w / steps), (h - barH) / 2f),
+                                                    size = Size((w / steps) * 0.7f, barH)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                        Text("${proj.bpm} BPM // ${proj.keySignature}", color = Color.White.copy(0.5f), fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                                        Box(
+                                            modifier = Modifier
+                                                .background(HotViolet.copy(0.12f), RoundedCornerShape(20.dp))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Text("STUDIO", color = HotViolet, fontSize = 6.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 7: AI Suggestions (Category Filtering Chips)
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "AI CLASSIFICATION CHIPS",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val suggestionModels = listOf(
+                            "Offline AI" to MintGreen,
+                            "Cloud AI" to NeonCyan,
+                            "Trending AI" to HotViolet,
+                            "Recommended AI" to GoldenAmber,
+                            "Recently Used" to Color.White
+                        )
+
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(suggestionModels) { (lbl, clr) ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color.White.copy(0.04f))
+                                        .border(0.5.dp, clr.copy(0.35f), RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            viewModel.addNotification("AI profile matched to: $lbl")
+                                            Toast.makeText(context, "$lbl module selected.", Toast.LENGTH_SHORT).show()
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Box(modifier = Modifier.size(4.dp).clip(RoundedCornerShape(50)).background(clr))
+                                        Text(lbl, color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 8: Favorite Presets Carousel (Instant EQ Modifiers)
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "FAVORITE HARDWARE PRESETS (TAP TO APPLY EQ MIX)",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    // Standard presets target lists
+                    val favoritePresets = listOf(
+                        Triple("Bass Boost", "Solid low-end sub boost (+6dB @ 60Hz)", listOf(6f, 4f, 2f, 0f, 0f, 0f, 1f, 2f, 3f, 4f)),
+                        Triple("Podcast", "Vocal clarity emphasis mid-range", listOf(-2f, -1f, 1f, 4f, 5f, 3f, 2f, 1f, 3f, 1f)),
+                        Triple("Studio Vocal", "High air dynamic compression", listOf(1f, 2f, 1f, 2f, 4f, 5f, 5f, 6f, 8f, 7f)),
+                        Triple("Live Streaming", "Broad-stage ambient gating", listOf(3f, 3f, 2f, 1f, 2f, 3f, 4f, 5f, 4f, 3f)),
+                        Triple("Gaming", "Expanded surround localization", listOf(5f, 2f, -1f, -1f, 1f, 3f, 4f, 5f, 6f, 8f)),
+                        Triple("Car Audio", "Punchy solid acoustics limiter", listOf(6f, 6f, 4f, 2f, 0f, 1f, 2f, 3f, 4f, 6f)),
+                        Triple("Headphones", "Attenuated harsh-high parameters", listOf(1f, 1f, 2f, 2f, 0f, -1f, -2f, -3f, 0f, 2f))
+                    )
+
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(favoritePresets) { (name, bDesc, eqLevels) ->
+                            Column(
+                                modifier = Modifier
+                                    .width(150.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(GlassCardBg)
+                                    .border(1.dp, NeonCyan.copy(0.18f), RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        // Update viewmodel EQ bands dynamically
+                                        for (i in 0 until 10) {
+                                            viewModel.setEqBandLevel(i, eqLevels[i])
+                                        }
+                                        viewModel.addNotification("$name physical EQ settings loaded.")
+                                        Toast.makeText(context, "Loaded EQ Target Mix: $name", Toast.LENGTH_SHORT).show()
+                                    }
+                                    .padding(10.dp)
+                            ) {
+                                Text(name, color = NeonCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(bDesc, color = Color.White.copy(0.45f), fontSize = 7.sp, fontFamily = FontFamily.Monospace, lineHeight = 9.sp)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                
+                                // High visual EQ curve sparkline inside preset
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(20.dp)
+                                        .background(Color.Black.copy(0.2f), RoundedCornerShape(4.dp))
+                                        .padding(4.dp)
+                                ) {
+                                    Canvas(modifier = Modifier.fillMaxSize()) {
+                                        val cW = size.width
+                                        val cH = size.height
+                                        val eStep = cW / 10
+
+                                        for (e in 0 until 10) {
+                                            val eqFraction = (eqLevels[e] + 12f) / 24f // Map -12..12 DB to scale 0..1
+                                            val eqLineH = cH * eqFraction
+                                            drawRect(
+                                                color = HotViolet,
+                                                topLeft = Offset(e * eStep, cH - eqLineH),
+                                                size = Size(eStep * 0.7f, eqLineH)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 9: Recent Audio Files
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "IMPORTED AUDIO LIBRARY",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    val audioLibrary = listOf(
+                        Triple("vocal_lead_raw.wav", "00:44", "PCM 24-bit 96kHz Stereo"),
+                        Triple("synthesizer_poly_pad.wav", "02:18", "PCM 24-bit 96kHz Stereo"),
+                        Triple("acoustic_drum_break_120.wav", "00:08", "PCM 24-bit 96kHz Mono"),
+                        Triple("recorded_ambient_hiss.wav", "01:10", "MP3 320kbps Stereo")
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        audioLibrary.forEach { (aName, aDur, aSpec) ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(GlassCardBg)
+                                    .border(1.dp, GlassBorder.copy(0.12f), RoundedCornerShape(8.dp))
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("🎵", fontSize = 16.sp)
+                                    Column {
+                                        Text(aName, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                        Text("$aDur • $aSpec", color = Color.White.copy(0.4f), fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                                    }
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    // Open file
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.addNotification("Loaded $aName as Active Mastering Input.")
+                                            Toast.makeText(context, "$aName selected.", Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.size(26.dp).background(Color.White.copy(0.04f), RoundedCornerShape(50))
+                                    ) {
+                                        Text("▶", fontSize = 10.sp, color = NeonCyan)
+                                    }
+
+                                    // Share Node file
+                                    IconButton(
+                                        onClick = {
+                                            Toast.makeText(context, "System share callback generated for: $aName", Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.size(26.dp).background(Color.White.copy(0.04f), RoundedCornerShape(50))
+                                    ) {
+                                        Text("📤", fontSize = 9.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 10: Learning Center Cards
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "LEARNING CENTER",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    val tutorials = listOf(
+                        Triple("PRO AUDIO MASTERING SECRETS", "Unlock the hidden solid-state saturator algorithms to double vocal loudness safely.", "LEARN PRO MASTER"),
+                        Triple("OPTIMIZING 10-BAND EQ PARAMETERS", "Visual guide mapping raw frequency spectra to professional car and headphone speakers.", "VIEW EQ GUIDE"),
+                        Triple("AI CREATIVE LYRICS GENERATORS", "How to trigger Gemini LLMs inside our lyrics generation matrix effectively.", "OPEN GUIDE")
+                    )
+
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(tutorials) { (titleText, descText, actionLabel) ->
+                            Column(
+                                modifier = Modifier
+                                    .width(260.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(GlassCardBg)
+                                    .border(1.dp, GlassBorder.copy(0.24f), RoundedCornerShape(12.dp))
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(titleText, color = GoldenAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                Text(descText, color = Color.White.copy(0.6f), fontSize = 9.sp, lineHeight = 12.sp, fontFamily = FontFamily.Monospace)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Button(
+                                    onClick = {
+                                        viewModel.addNotification("Tutorial loaded: $titleText")
+                                        Toast.makeText(context, "Redirecting to $titleText", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text(actionLabel, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Margin bottom to allow scroll clearance above PersistentMiniPlayer
+            item {
+                Spacer(modifier = Modifier.height(96.dp))
+            }
+        }
+
+        // ==========================================
+        // Section 11: Heartbeat-pulsing Red Record FAB
+        // ==========================================
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 20.dp, bottom = 90.dp)
+        ) {
+            val recordActive by viewModel.isRecordingActive.collectAsState()
+            
+            // Pulse glow size animation
+            val fabTransition = rememberInfiniteTransition(label = "fab_pulse")
+            val pulseScale by fabTransition.animateFloat(
+                initialValue = 0.95f,
+                targetValue = 1.15f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1000, easing = LinearOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "fabScale"
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(58.dp)
+                    .graphicsLayer(
+                        scaleX = if (recordActive) 1.0f else pulseScale,
+                        scaleY = if (recordActive) 1.0f else pulseScale
+                    )
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        Brush.radialGradient(
+                            listOf(
+                                Color.Red,
+                                if (recordActive) Color.Red.copy(0.4f) else Color.Red.copy(0.12f)
+                            )
+                        )
+                    )
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = {
+                                viewModel.startRecording()
+                            },
+                            onLongPress = {
+                                // Save a fast Voice Memo directly
+                                val name = "Voice_Memo_" + System.currentTimeMillis() / 1000
+                                viewModel.startRecording()
+                                coroutineScope.launch {
+                                    delay(2000)
+                                    viewModel.stopAndSaveRecording(name)
+                                    Toast.makeText(context, "Voice Memo saved automatically: $name", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            onDoubleTap = {
+                                advancedRecorderSettingsOpen = true
+                            }
+                        )
+                    }
+                    .testTag("floating_live_audio_record_fab"),
+                contentAlignment = Alignment.Center
+            ) {
+                // Glow boundary circles
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0xFF04060B))
+                        .border(2.dp, Color.Red, RoundedCornerShape(50)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("🔴", fontSize = 18.sp)
+                }
+            }
+        }
+
+        // ==========================================
+        // LOCAL STATE MODALS & TELEMETRY DIALOGS
+        // ==========================================
+
+        // 1. Interactive Visualization settings overlay panel
+        if (visSettingsOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.8f))
+                    .clickable { visSettingsOpen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .background(Color(0xFF0A0C16), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, GlassBorder, RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { /* Block dismiss */ }
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("VISUALIZATION ENGINE VALUES", color = NeonCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("❌", color = Color.White, fontSize = 11.sp, modifier = Modifier.clickable { visSettingsOpen = false })
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Decay Coefficient: ${(visDecayPeriod * 100).toInt()}%", color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        Slider(
+                            value = visDecayPeriod,
+                            onValueChange = { visDecayPeriod = it },
+                            valueRange = 0.1f..1.0f,
+                            colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan)
+                        )
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("FFT Scale Power: ${visScaleDb.toInt()} dB SPL", color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        Slider(
+                            value = visScaleDb,
+                            onValueChange = { visScaleDb = it },
+                            valueRange = 12f..96f,
+                            colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan)
+                        )
+                    }
+
+                    Button(
+                        onClick = { visSettingsOpen = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("APPLY PHYSICAL GRID EFFECTS", color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // 2. Beautiful File Importer Dialog
+        if (fileImporterOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.8f))
+                    .clickable { fileImporterOpen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .background(Color(0xFF090B12), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, GlassBorder, RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { /* Block dismiss */ }
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("SELECT AUDIO SOURCE FILE", color = NeonCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("❌", color = Color.White, fontSize = 11.sp, modifier = Modifier.clickable { fileImporterOpen = false })
+                    }
+
+                    val samples = listOf(
+                        "guitar_strum_clean_E.wav" to "00:15 • 24-bit PCM",
+                        "rhythm_trap_drums_808.wav" to "00:48 • 24-bit PCM",
+                        "synth_wave_space_intro.wav" to "02:04 • 24-bit PCM",
+                        "ambient_rain_sound_effect.mp3" to "01:30 • 320kbps MP3"
+                    )
+
+                    samples.forEach { (sName, sSpec) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White.copy(0.02f), RoundedCornerShape(6.dp))
+                                .border(0.5.dp, GlassBorder.copy(0.12f), RoundedCornerShape(6.dp))
+                                .clickable {
+                                    viewModel.addNotification("Imported $sName successfully.")
+                                    fileImporterOpen = false
+                                    Toast.makeText(context, "$sName added to project tracks.", Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("📁", fontSize = 14.sp)
+                                Column {
+                                    Text(sName, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                    Text(sSpec, color = Color.White.copy(0.5f), fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                            Text("SELECT", color = NeonCyan, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Audio Cropper/Editor Waveform Dialog
+        if (audioCropperOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.85f))
+                    .clickable { audioCropperOpen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .background(Color(0xFF0F0B18), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, HotViolet.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { /* Block dismiss */ }
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("AUDIO CROPPING WAVEFORM TOOL", color = HotViolet, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("❌", color = Color.White, fontSize = 11.sp, modifier = Modifier.clickable { audioCropperOpen = false })
+                    }
+
+                    Text("Drag gates to prune the active sample duration.", color = Color.White.copy(0.7f), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+
+                    // Simulated Cropper Area with left/right seek gates
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .background(Color.Black.copy(0.4f), RoundedCornerShape(8.dp))
+                            .border(1.dp, HotViolet, RoundedCornerShape(8.dp))
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
+                            val w = size.width
+                            val h = size.height
+                            val lines = 36
+                            val lineGap = w / lines
+
+                            for (i in 0 until lines) {
+                                val valSin = sin(i * 0.25f) * cos(i * 0.12f)
+                                val finalLineHeight = (h * 0.64f) * abs(valSin)
+
+                                drawLine(
+                                    color = NeonCyan,
+                                    start = Offset(i * lineGap, (h - finalLineHeight) / 2f),
+                                    end = Offset(i * lineGap, (h + finalLineHeight) / 2f),
+                                    strokeWidth = 2.dp.toPx()
+                                )
+                            }
+                        }
+
+                        // Left select crop handle
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .width(12.dp)
+                                .background(HotViolet)
+                                .align(Alignment.CenterStart),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("◀", color = Color.White, fontSize = 6.sp)
+                        }
+
+                        // Right select crop handle
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .width(12.dp)
+                                .background(HotViolet)
+                                .align(Alignment.CenterEnd),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("▶", color = Color.White, fontSize = 6.sp)
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            audioCropperOpen = false
+                            viewModel.addNotification("Audio file cropped successfully.")
+                            Toast.makeText(context, "Pruned sample successfully.", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("SAVE CROP SELECTION", color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+        }
+
+        // 4. Vocal Splitter / Karaoke processor dialogue
+        if (karaokeSplitterOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.85f))
+                    .clickable { karaokeSplitterOpen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                var separatorProgress by remember { mutableStateOf(0f) }
+                var separatingState by remember { mutableStateOf("IDLE") }
+
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .background(Color(0xFF070912), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, MintGreen, RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { /* Block dismiss */ }
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("AI MULTI-STEM SPLITTER", color = MintGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("❌", color = Color.White, fontSize = 11.sp, modifier = Modifier.clickable { karaokeSplitterOpen = false })
+                    }
+
+                    Text("Process current track into independent Vocal, Beat, Bass, and Synth stems using DSP separations models.", color = Color.White.copy(0.6f), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+
+                    if (separatingState == "PROCESSING") {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            LinearProgressIndicator(progress = separatorProgress, color = MintGreen, modifier = Modifier.fillMaxWidth())
+                            Text("Neural Stem Isolations: ${(separatorProgress * 100).toInt()}% completed", color = MintGreen, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    } else if (separatingState == "DONE") {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.fillMaxWidth().background(Color.White.copy(0.04f)).padding(8.dp)) {
+                                Text("Vocal Stem: ISOLATED (24-bit WAV)\nBeat Drum Stem: ISOLATED (24-bit WAV)\nMelodics Pad: ISOLATED (24-bit WAV)", color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            if (separatingState == "IDLE") {
+                                separatingState = "PROCESSING"
+                                coroutineScope.launch {
+                                    for (p in 1..100) {
+                                        delay(25)
+                                        separatorProgress = p.toFloat() / 100f
+                                    }
+                                    separatingState = "DONE"
+                                    viewModel.addNotification("Karaoke vocals stem extraction built successfully.")
+                                }
+                            } else if (separatingState == "DONE") {
+                                karaokeSplitterOpen = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MintGreen),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (separatingState == "IDLE") "START STEM EXTRACTION" else if (separatingState == "PROCESSING") "PROCESSING NEURAL MASKS..." else "IMPORT SPLIT TRACKS",
+                            color = Color.Black,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        }
+
+        // 5. AI Music progressions composer
+        if (aiMusicComposerOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.85f))
+                    .clickable { aiMusicComposerOpen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                var outputChords by remember { mutableStateOf("Click COMPOSE to generate chord models...") }
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .background(Color(0xFF131521), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, GoldenAmber, RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { /* Block dismiss */ }
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("AI SONGWRITING & CHORDS MATRIX", color = GoldenAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("❌", color = Color.White, fontSize = 11.sp, modifier = Modifier.clickable { aiMusicComposerOpen = false })
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.Black.copy(0.4f), RoundedCornerShape(6.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text(outputChords, color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace, lineHeight = 14.sp)
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = {
+                                outputChords = "AI Output Matrix (Key: F# Minor)\nProgression: F#m - Dmaj7 - Amaj - E5\nTempo Match: 114 BPM\nSynthesizer patches populated."
+                                viewModel.addNotification("AI Progressive chord nodes built.")
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = GoldenAmber),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("COMPOSE PROGRESSION", color = Color.Black, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+
+                        Button(
+                            onClick = {
+                                aiMusicComposerOpen = false
+                                viewModel.setCurrentTab("TOOLS")
+                                viewModel.setSelectedToolId("SYNTH")
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassCardBg),
+                            modifier = Modifier.border(0.5.dp, GoldenAmber, RoundedCornerShape(50))
+                        ) {
+                            Text("PLAY KEYS", color = Color.White, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 6. Audio Repair & gate de-noiser popup
+        if (audioRepairOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.85f))
+                    .clickable { audioRepairOpen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                var clickRemoval by remember { mutableStateOf(true) }
+                var hissRemoval by remember { mutableStateOf(false) }
+
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .background(Color(0xFF090C15), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, GlassBorder, RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { /* Block dismiss */ }
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("AI DE-NOSER & AUDIO REPAIR", color = NeonCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("❌", color = Color.White, fontSize = 11.sp, modifier = Modifier.clickable { audioRepairOpen = false })
+                    }
+
+                    Text("Attenuate background room air hiss, AC hums, and microphone crackles automatically.", color = Color.White.copy(0.6f), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+
+                    ListItem(
+                        headlineContent = { Text("Attenuate Transient Click Artifacts", color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace) },
+                        supportingContent = { Text("Detect and mute pops and crackles", color = Color.LightGray, fontSize = 8.sp, fontFamily = FontFamily.Monospace) },
+                        trailingContent = { Checkbox(checked = clickRemoval, onCheckedChange = { clickRemoval = it }) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+
+                    ListItem(
+                        headlineContent = { Text("Absolute Squelch Noise Gate Hiss", color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace) },
+                        supportingContent = { Text("Attenuates constant hum background air", color = Color.LightGray, fontSize = 8.sp, fontFamily = FontFamily.Monospace) },
+                        trailingContent = { Checkbox(checked = hissRemoval, onCheckedChange = { hissRemoval = it }) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+
+                    Button(
+                        onClick = {
+                            audioRepairOpen = false
+                            viewModel.addNotification("Audio Repair processing complete.")
+                            Toast.makeText(context, "Denoised and declicked wave sample successfully.", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("APPLY CO-PROCESSED MASTER FILTERS", color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+        }
+
+        // 7. HD Recorder advanced settings configuration overlay page
+        if (advancedRecorderSettingsOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.85f))
+                    .clickable { advancedRecorderSettingsOpen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                var selectedFormat by remember { mutableStateOf("WAV") }
+                var selectedSampleRate by remember { mutableStateOf("96kHz") }
+
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .background(Color(0xFF0F0F1A), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, GlassBorder, RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { /* Block dismiss */ }
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("HD AUDIO RECODER SPECIFICATIONS", color = NeonCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("❌", color = Color.White, fontSize = 11.sp, modifier = Modifier.clickable { advancedRecorderSettingsOpen = false })
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Format:", color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("WAV", "FLAC", "MP3").forEach { fmt ->
+                                val active = selectedFormat == fmt
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (active) NeonCyan else GlassCardBg)
+                                        .clickable { selectedFormat = fmt }
+                                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Text(fmt, color = if (active) Color.Black else Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Sample Rate:", color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("44.1kHz", "48kHz", "96kHz").forEach { rate ->
+                                val active = selectedSampleRate == rate
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (active) NeonCyan else GlassCardBg)
+                                        .clickable { selectedSampleRate = rate }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text(rate, color = if (active) Color.Black else Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            advancedRecorderSettingsOpen = false
+                            viewModel.addNotification("HD Recorder settings locked: WAV @ 96kHz.")
+                            Toast.makeText(context, "Configurations loaded to audio recorder module.", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("LOCK RECORDING HARDWARE GRID", color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+    val activeProject by viewModel.selectedProject.collectAsState()
+    val allProjects by viewModel.allProjects.collectAsState()
+    val allPresets by viewModel.allPresets.collectAsState()
+    
+    // UI Local Stateful overlays for advanced DAW Tools
+    var visSettingsOpen by remember { mutableStateOf(false) }
+    var visDecayPeriod by remember { mutableStateOf(0.7f) }
+    var visScaleDb by remember { mutableStateOf(48f) }
+    
+    var fileImporterOpen by remember { mutableStateOf(false) }
+    var audioCropperOpen by remember { mutableStateOf(false) }
+    var karaokeSplitterOpen by remember { mutableStateOf(false) }
+    var aiMusicComposerOpen by remember { mutableStateOf(false) }
+    var audioRepairOpen by remember { mutableStateOf(false) }
+    var advancedRecorderSettingsOpen by remember { mutableStateOf(false) }
+    
+    // AI Assistant inputs & simulated output console
+    var aiAssistantInput by remember { mutableStateOf("") }
+    var aiAssistantOutput by remember { mutableStateOf("Co-Creator Ready. Choose a fast command below or type details to orchestrate models.") }
+    var aiIsThinking by remember { mutableStateOf(false) }
+    
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val coroutineScope = rememberCoroutineScope()
+
+    // Infinite animation loops for visualization dynamics
+    val transition = rememberInfiniteTransition(label = "daw_oscilloscope")
+    val sweepFloat by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f * PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "oscilloscopeSweep"
+    )
+    
+    val bounceFloat by transition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = FastOutLinearInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "oscilloscopeBounce"
+    )
+
+    // Layout Root Container with Floating Record FAB overlaid
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SpaceObsidian)
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("home_screen_scrollable_container"),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // ==========================================
+            // Section 1: Dynamic Greeting & Audio Tip Panel
+            // ==========================================
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Brush.linearGradient(listOf(Color(0x0E7B2CBF), Color(0x0300E5FF))))
+                        .border(1.dp, GlassBorder.copy(0.18f), RoundedCornerShape(14.dp))
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Brush.linearGradient(listOf(ElectricIndigo, HotViolet))),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("⚡", fontSize = 18.sp)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Achmad Tohirin • Producer Console",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "MASTERING TIP: Saturating the 16kHz vocal high-end band with 12ms delay feedbacks generates gorgeous digital air. Try custom EQ profiles below.",
+                            color = NeonCyan,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            lineHeight = 12.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 2: Realtime Live Audio Visualization Deck
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "LIVE AUDIO VISUALIZER (TAP ANALYZER // LONG-PRESS CFG)",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xFF070912))
+                            .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = {
+                                        // Tap opens the analyzer tab tool
+                                        viewModel.setCurrentTab("TOOLS")
+                                        viewModel.setSelectedToolId("ANALYZER")
+                                        Toast.makeText(context, "Navigated to Analyzer diagnostic deck.", Toast.LENGTH_SHORT).show()
+                                    },
+                                    onLongPress = {
+                                        visSettingsOpen = true
+                                    }
+                                )
+                            }
+                    ) {
+                        // Drawing grid lines, FFT spectrum columns, VU led lights, and Soundwave oscillographs
+                        Canvas(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+                            val w = size.width
+                            val h = size.height
+
+                            // Draw subtle horizontal grid ticks (Classic DAW cathode scopes look)
+                            val gridLines = 5
+                            val gridStep = h / gridLines
+                            for (i in 0 until gridLines) {
+                                drawLine(
+                                    color = Color.White.copy(0.04f),
+                                    start = Offset(0f, i * gridStep),
+                                    end = Offset(w, i * gridStep),
+                                    strokeWidth = 1.dp.toPx()
+                                )
+                            }
+
+                            // 1. Draw Simulated 16-Band FFT Columns
+                            val barCount = 18
+                            val barGap = 6.dp.toPx()
+                            val totalGapWidth = barGap * (barCount - 1)
+                            val barWidth = (w * 0.7f - totalGapWidth) / barCount
+
+                            for (i in 0 until barCount) {
+                                val amplitudeMultiplier = sin(sweepFloat + (i * 0.45f)) * 0.35f + 0.55f
+                                val barHeight = h * 0.75f * amplitudeMultiplier * bounceFloat
+                                val startX = i * (barWidth + barGap)
+
+                                // Dual-color glowing metallic gradient for columns
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        listOf(HotViolet, NeonCyan)
+                                    ),
+                                    topLeft = Offset(startX, h - barHeight),
+                                    size = Size(barWidth, barHeight),
+                                    alpha = 0.82f
+                                )
+                            }
+
+                            // 2. Draw Simulated Stereo VU Level Meter (L / R Channel)
+                            val vuStartX = w * 0.75f
+                            val vuWidth = 12.dp.toPx()
+                            val segmentCount = 10
+                            val segmentHeight = (h * 0.85f) / segmentCount
+                            val segmentGap = 2.dp.toPx()
+
+                            for (ch in 0..1) { // Left = 0, Right = 1
+                                val currentChStartX = vuStartX + ch * (vuWidth + 14.dp.toPx())
+                                val chRandomAmp = if (ch == 0) bounceFloat else (bounceFloat * 0.9f + 0.05f)
+
+                                for (s in 0 until segmentCount) {
+                                    val isLit = (segmentCount - s).toFloat() / segmentCount <= chRandomAmp
+                                    val segmentColor = when {
+                                        s < 2 -> Color.Red // peaks
+                                        s < 5 -> GoldenAmber // high warnings
+                                        else -> MintGreen // normal safety levels
+                                    }
+                                    val segmentAlpha = if (isLit) 0.95f else 0.08f
+
+                                    drawRoundRect(
+                                        color = segmentColor,
+                                        topLeft = Offset(currentChStartX, s * (segmentHeight + segmentGap)),
+                                        size = Size(vuWidth, segmentHeight),
+                                        cornerRadius = CornerRadius(1.dp.toPx()),
+                                        alpha = segmentAlpha
+                                    )
+                                }
+                            }
+
+                            // 3. Draw overlay continuous Waveform Line
+                            val points = 64
+                            val path = androidx.compose.ui.graphics.Path()
+                            val waveWidth = w * 0.7f
+                            val waveYCenter = h * 0.4f
+
+                            for (p in 0..points) {
+                                val x = (p.toFloat() / points) * waveWidth
+                                val y = waveYCenter + sin(sweepFloat + (p * 0.35f)) * 14.dp.toPx() * bounceFloat
+
+                                if (p == 0) {
+                                    path.moveTo(x, y)
+                                } else {
+                                    path.lineTo(x, y)
+                                }
+                            }
+
+                            drawPath(
+                                path = path,
+                                color = NeonCyan,
+                                style = Stroke(width = 2.dp.toPx()),
+                                alpha = 0.9f
+                            )
+                        }
+
+                        // Top overlays displaying real-time parameters
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(28.dp)
+                                .background(Color.Black.copy(0.4f))
+                                .align(Alignment.TopCenter)
+                                .padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "DECAY: ${(visDecayPeriod * 100).toInt()}% • SCALE: ${visScaleDb.toInt()}dB SPL",
+                                color = Color.White.copy(0.55f),
+                                fontSize = 8.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Black
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(MintGreen)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 3: Quick Studio Tools (Haptic Grid of 10)
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "QUICK STUDIO TOOLS (TOUCH RESPONSIVE CORES)",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    // 10 buttons aligned inside a premium multi-item row grid
+                    val toolsList = listOf(
+                        Quadruple("RECORD", "🎙️", { viewModel.startRecording() }, NeonCyan),
+                        Quadruple("IMPORT", "📥", { fileImporterOpen = true }, NeonCyan),
+                        Quadruple("EQ", "🎛️", {
+                            viewModel.setCurrentTab("TOOLS")
+                            viewModel.setSelectedToolId("EQUALIZER")
+                        }, ElectricIndigo),
+                        Quadruple("AI MASTER", "🪄", {
+                            viewModel.setCurrentTab("TOOLS")
+                            viewModel.setSelectedToolId("AI_COCREATOR")
+                        }, ElectricIndigo),
+                        Quadruple("MIXER", "🎚️", {
+                            viewModel.setCurrentTab("TOOLS")
+                            viewModel.setSelectedToolId("MIXER")
+                        }, HotViolet),
+                        Quadruple("EDITOR", "✂️", { audioCropperOpen = true }, HotViolet),
+                        Quadruple("KARAOKE", "🎤", { karaokeSplitterOpen = true }, MintGreen),
+                        Quadruple("PODCAST", "🗣️", {
+                            // Apply broadcast podcast preset and notify
+                            viewModel.savePreset("Broadcast Vocal")
+                            viewModel.addNotification("Podcast vocal preset applied instantly.")
+                            Toast.makeText(context, "Applied broadcast profile preset to Equalizer.", Toast.LENGTH_SHORT).show()
+                        }, MintGreen),
+                        Quadruple("AI MUSIC", "🎵", { aiMusicComposerOpen = true }, GoldenAmber),
+                        Quadruple("REPAIR", "🩹", { audioRepairOpen = true }, GoldenAmber)
+                    )
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        maxItemsInEachRow = 5,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        toolsList.forEach { tool ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(58.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(GlassCardBg)
+                                    .border(1.dp, GlassBorder.copy(0.2f), RoundedCornerShape(10.dp))
+                                    .clickable { tool.action() }
+                                    .testTag("quick_studio_tool_${tool.label}"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(tool.unicode, fontSize = 20.sp)
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = tool.label,
+                                        color = tool.color,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Black,
+                                        fontFamily = FontFamily.Monospace,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 4: Continue Project (Focus Hub)
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "CONTINUE RECENT WORKSPACE SESSION",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    // Target last project dynamically or show placeholder
+                    val focalProj = allProjects.firstOrNull() ?: AudioProjectEntity(
+                        id = 9999,
+                        title = "Atmospheric Void Intro Synth",
+                        bpm = 114,
+                        keySignature = "F# Minor",
+                        notes = "Analog saturation model tracks with heavy multi-stage tape delays.",
+                        lyrics = "Silent soundwaves breathing inside the electronic neon void..."
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Brush.radialGradient(listOf(Color(0x2A131521), Color(0xFF04060B))))
+                            .border(1.5.dp, HotViolet.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Box(
+                                    modifier = Modifier
+                                        .background(HotViolet.copy(0.18f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text("LAST WORKSPACE", color = HotViolet, fontSize = 7.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = focalProj.title,
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Black,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Text(
+                                text = "⏱️ ${focalProj.bpm} BPM // ${focalProj.keySignature}",
+                                color = GoldenAmber,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Simulated Soundwave artwork inside focal session
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(0.02f))
+                                .border(0.5.dp, GlassBorder.copy(0.2f), RoundedCornerShape(8.dp))
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+                                val w = size.width
+                                val h = size.height
+                                val lines = 44
+                                val lineGap = w / lines
+
+                                for (i in 0 until lines) {
+                                    val valSin = sin(i * 0.18f) * cos(i * 0.4f)
+                                    val finalLineHeight = (h * 0.8f) * abs(valSin)
+
+                                    drawLine(
+                                        color = if (i < lines * 0.35f) HotViolet else NeonCyan.copy(0.5f),
+                                        start = Offset(i * lineGap, (h - finalLineHeight) / 2f),
+                                        end = Offset(i * lineGap, (h + finalLineHeight) / 2f),
+                                        strokeWidth = 2.dp.toPx()
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Saved: " + SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(Date(focalProj.lastSaved)),
+                                color = Color.White.copy(0.4f),
+                                fontSize = 8.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                // Delete/Discard button
+                                Button(
+                                    onClick = {
+                                        if (allProjects.isNotEmpty() && focalProj.id != 9999) {
+                                            viewModel.deleteProject(focalProj.id)
+                                            Toast.makeText(context, "Workspace discarded: ${focalProj.title}", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Cannot discard system core templates.", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(0.12f)),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp).border(0.5.dp, Color.Red.copy(0.3f), RoundedCornerShape(4.dp))
+                                ) {
+                                    Text("DISCARD", color = Color.Red, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+
+                                // Duplicate/Clone button
+                                Button(
+                                    onClick = {
+                                        viewModel.createNewProject(focalProj.title + " (Copy)")
+                                        Toast.makeText(context, "Project duplicated in Database.", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = GlassCardBg),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp).border(0.5.dp, GlassBorder.copy(0.3f), RoundedCornerShape(4.dp))
+                                ) {
+                                    Text("CLONE", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+
+                                // Continue/Edit button
+                                Button(
+                                    onClick = {
+                                        viewModel.selectProject(focalProj)
+                                        viewModel.setCurrentTab("TOOLS")
+                                        viewModel.setSelectedToolId("MIXER")
+                                        Toast.makeText(context, "Loaded DAW: ${focalProj.title}", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text("EDIT", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 5: AI sound assistant card
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "AI CO-CREATOR STUDIO COMMAND CENTER",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xFF0F0B18))
+                            .border(1.5.dp, HotViolet.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            // Blinking AI core avatar
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Brush.radialGradient(listOf(HotViolet.copy(0.5f), Color.Transparent)))
+                                    .border(1.dp, HotViolet, RoundedCornerShape(50)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("🔮", fontSize = 16.sp, modifier = Modifier.align(Alignment.Center))
+                            }
+
+                            Column {
+                                Text("AI SOUND ASSISTANT", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                Text("CO-CREATION ENGINES ACTIVE", color = NeonCyan, fontSize = 8.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+
+                        // AI Console output
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 54.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color.Black.copy(0.35f))
+                                .padding(8.dp)
+                        ) {
+                            if (aiIsThinking) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(10.dp), strokeWidth = 1.dp, color = NeonCyan)
+                                    Text("Synthesizing neural audio parameters...", color = NeonCyan, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                                }
+                            } else {
+                                Text(
+                                    text = aiAssistantOutput,
+                                    color = Color.White.copy(0.85f),
+                                    fontSize = 9.sp,
+                                    lineHeight = 12.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+
+                        // Text input & Voice mic button row
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            OutlinedTextField(
+                                value = aiAssistantInput,
+                                onValueChange = { aiAssistantInput = it },
+                                placeholder = { Text("Ask Gemini to isolate sound, write chords, split bass...", color = Color.Gray, fontSize = 9.sp, fontFamily = FontFamily.Monospace) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp)
+                                    .testTag("ai_prompt_text_field"),
+                                textStyle = LocalTextStyle.current.copy(fontSize = 9.sp, color = Color.White, fontFamily = FontFamily.Monospace),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = HotViolet,
+                                    unfocusedBorderColor = GlassBorder.copy(0.4f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                )
+                            )
+
+                            // Voice dictation microphone button
+                            IconButton(
+                                onClick = {
+                                    aiAssistantInput = "Record broadcast profile mic vocal track"
+                                    Toast.makeText(context, "Voice dictation audio recorded.", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .background(HotViolet.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
+                                    .border(1.dp, HotViolet.copy(0.4f), RoundedCornerShape(10.dp))
+                                    .testTag("voice_prompt_mic_button")
+                            ) {
+                                Text("🎙️", fontSize = 16.sp)
+                            }
+
+                            // Run button
+                            Button(
+                                onClick = {
+                                    if (aiAssistantInput.isNotEmpty()) {
+                                        keyboardController?.hide()
+                                        aiIsThinking = true
+                                        aiAssistantOutput = ""
+                                        // Execute custom mock response based on input
+                                        val prompt = aiAssistantInput
+                                        aiAssistantInput = ""
+                                        viewModel.viewModelScope.launch {
+                                            delay(1500)
+                                            aiIsThinking = false
+                                            aiAssistantOutput = when {
+                                                prompt.contains("Vocal", ignoreCase = true) || prompt.contains("vocal", ignoreCase = true) ->
+                                                    "AI Separation: Vocal track successfully isolated from 'Beat Stem 1'. Separation fidelity is computed at 98.4dB SNR."
+                                                prompt.contains("Chords", ignoreCase = true) || prompt.contains("chords", ignoreCase = true) ->
+                                                    "AI Chords Composer: Generated (i - VI - III - VII) progression in F# Minor. Playback mapped to analog synth module."
+                                                prompt.contains("Master", ignoreCase = true) || prompt.contains("master", ignoreCase = true) ->
+                                                    "AI Mastering Suite: Set graphic EQ decay parameters. Added +2.4dB tube compression saturation at 250Hz. Lows gated."
+                                                else -> "AI Engine: Executed pipeline for the requested action successfully. Equalizer registers configured."
+                                            }
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                                modifier = Modifier.height(42.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp)
+                            ) {
+                                Text("RUN", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+
+                        // Presets Task pills (Interactive pills)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            maxItemsInEachRow = 3,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            val pills = listOf(
+                                "Remove Vocal" to "Isolating vocal stems...",
+                                "Master This Song" to "Applying heavy solid-state tube limiter and analog EQ outputs...",
+                                "Clean My Voice" to "Noise Gate threshold mapped to -45dB. Attenuating hiss values...",
+                                "Generate Beat" to "Generated 118 BPM deep ambient house grid...",
+                                "Fix Noise" to "Attenuating clicks, high-frequency hiss, and low-end AC rumble..."
+                            )
+
+                            pills.forEach { (label, actionResponse) ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(Color.White.copy(0.04f))
+                                        .border(1.dp, GlassBorder.copy(0.3f), RoundedCornerShape(50))
+                                        .clickable {
+                                            aiIsThinking = true
+                                            coroutineScope.launch {
+                                                delay(1200)
+                                                aiIsThinking = false
+                                                aiAssistantOutput = "AI Suite: $actionResponse"
+                                            }
+                                        }
+                                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = NeonCyan,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 6: Recent Projects Carousel (Unbounded Horizontal Scrolling)
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "RECENT PROJECTS (UNLIMITED HORIZONTAL CAROUSEL)",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    if (allProjects.isEmpty()) {
+                        // Empty state indicator
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(90.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(GlassCardBg)
+                                .border(1.dp, GlassBorder.copy(0.12f), RoundedCornerShape(12.dp))
+                                .clickable {
+                                    viewModel.createNewProject("New Atmospheric Track")
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("📂 No tracks inside DB workspace.", color = Color.White.copy(0.4f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("CLICK TO GENERATE FIRST DAW TEMPLATE", color = NeonCyan, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    } else {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(allProjects) { proj ->
+                                Column(
+                                    modifier = Modifier
+                                        .width(180.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(GlassCardBg)
+                                        .border(1.dp, GlassBorder.copy(0.3f), RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            viewModel.selectProject(proj)
+                                            viewModel.setCurrentTab("TOOLS")
+                                            viewModel.setSelectedToolId("MIXER")
+                                            Toast.makeText(context, "Loaded: ${proj.title}", Toast.LENGTH_SHORT).show()
+                                        }
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = proj.title,
+                                            color = Color.White,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Black,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text("☁️", fontSize = 8.sp)
+                                            Text("⭐️", fontSize = 8.sp, color = GoldenAmber)
+                                        }
+                                    }
+
+                                    // Minimal wave shape inside card
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(28.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color.White.copy(0.01f))
+                                    ) {
+                                        Canvas(modifier = Modifier.fillMaxSize()) {
+                                            val w = size.width
+                                            val h = size.height
+                                            val steps = 18
+
+                                            for (k in 0 until steps) {
+                                                val hFraction = sin((k + proj.id) * 0.45f) * cos((k + proj.id) * 0.9f)
+                                                val barH = h * 0.7f * abs(hFraction)
+                                                drawRect(
+                                                    color = if (proj.id % 2 == 0) NeonCyan.copy(0.6f) else HotViolet.copy(0.6f),
+                                                    topLeft = Offset(k * (w / steps), (h - barH) / 2f),
+                                                    size = Size((w / steps) * 0.7f, barH)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                        Text("${proj.bpm} BPM // ${proj.keySignature}", color = Color.White.copy(0.5f), fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                                        Box(
+                                            modifier = Modifier
+                                                .background(HotViolet.copy(0.12f), RoundedCornerShape(20.dp))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Text("STUDIO", color = HotViolet, fontSize = 6.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 7: AI Suggestions (Category Filtering Chips)
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "AI CLASSIFICATION CHIPS",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val suggestionModels = listOf(
+                            "Offline AI" to MintGreen,
+                            "Cloud AI" to NeonCyan,
+                            "Trending AI" to HotViolet,
+                            "Recommended AI" to GoldenAmber,
+                            "Recently Used" to Color.White
+                        )
+
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(suggestionModels) { (lbl, clr) ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color.White.copy(0.04f))
+                                        .border(0.5.dp, clr.copy(0.35f), RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            viewModel.addNotification("AI profile matched to: $lbl")
+                                            Toast.makeText(context, "$lbl module selected.", Toast.LENGTH_SHORT).show()
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Box(modifier = Modifier.size(4.dp).clip(RoundedCornerShape(50)).background(clr))
+                                        Text(lbl, color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 8: Favorite Presets Carousel (Instant EQ Modifiers)
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "FAVORITE HARDWARE PRESETS (TAP TO APPLY EQ MIX)",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    // Standard presets target lists
+                    val favoritePresets = listOf(
+                        Triple("Bass Boost", "Solid low-end sub boost (+6dB @ 60Hz)", listOf(6f, 4f, 2f, 0f, 0f, 0f, 1f, 2f, 3f, 4f)),
+                        Triple("Podcast", "Vocal clarity emphasis mid-range", listOf(-2f, -1f, 1f, 4f, 5f, 3f, 2f, 1f, 3f, 1f)),
+                        Triple("Studio Vocal", "High air dynamic compression", listOf(1f, 2f, 1f, 2f, 4f, 5f, 5f, 6f, 8f, 7f)),
+                        Triple("Live Streaming", "Broad-stage ambient gating", listOf(3f, 3f, 2f, 1f, 2f, 3f, 4f, 5f, 4f, 3f)),
+                        Triple("Gaming", "Expanded surround localization", listOf(5f, 2f, -1f, -1f, 1f, 3f, 4f, 5f, 6f, 8f)),
+                        Triple("Car Audio", "Punchy solid acoustics limiter", listOf(6f, 6f, 4f, 2f, 0f, 1f, 2f, 3f, 4f, 6f)),
+                        Triple("Headphones", "Attenuated harsh-high parameters", listOf(1f, 1f, 2f, 2f, 0f, -1f, -2f, -3f, 0f, 2f))
+                    )
+
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(favoritePresets) { (name, bDesc, eqLevels) ->
+                            Column(
+                                modifier = Modifier
+                                    .width(150.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(GlassCardBg)
+                                    .border(1.dp, NeonCyan.copy(0.18f), RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        // Update viewmodel EQ bands dynamically
+                                        for (i in 0 until 10) {
+                                            viewModel.setEqBandLevel(i, eqLevels[i])
+                                        }
+                                        viewModel.addNotification("$name physical EQ settings loaded.")
+                                        Toast.makeText(context, "Loaded EQ Target Mix: $name", Toast.LENGTH_SHORT).show()
+                                    }
+                                    .padding(10.dp)
+                            ) {
+                                Text(name, color = NeonCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(bDesc, color = Color.White.copy(0.45f), fontSize = 7.sp, fontFamily = FontFamily.Monospace, lineHeight = 9.sp)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                
+                                // High visual EQ curve sparkline inside preset
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(20.dp)
+                                        .background(Color.Black.copy(0.2f), RoundedCornerShape(4.dp))
+                                        .padding(4.dp)
+                                ) {
+                                    Canvas(modifier = Modifier.fillMaxSize()) {
+                                        val cW = size.width
+                                        val cH = size.height
+                                        val eStep = cW / 10
+
+                                        for (e in 0 until 10) {
+                                            val eqFraction = (eqLevels[e] + 12f) / 24f // Map -12..12 DB to scale 0..1
+                                            val eqLineH = cH * eqFraction
+                                            drawRect(
+                                                color = HotViolet,
+                                                topLeft = Offset(e * eStep, cH - eqLineH),
+                                                size = Size(eStep * 0.7f, eqLineH)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 9: Recent Audio Files
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "IMPORTED AUDIO LIBRARY",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    val audioLibrary = listOf(
+                        Triple("vocal_lead_raw.wav", "00:44", "PCM 24-bit 96kHz Stereo"),
+                        Triple("synthesizer_poly_pad.wav", "02:18", "PCM 24-bit 96kHz Stereo"),
+                        Triple("acoustic_drum_break_120.wav", "00:08", "PCM 24-bit 96kHz Mono"),
+                        Triple("recorded_ambient_hiss.wav", "01:10", "MP3 320kbps Stereo")
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        audioLibrary.forEach { (aName, aDur, aSpec) ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(GlassCardBg)
+                                    .border(1.dp, GlassBorder.copy(0.12f), RoundedCornerShape(8.dp))
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("🎵", fontSize = 16.sp)
+                                    Column {
+                                        Text(aName, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                        Text("$aDur • $aSpec", color = Color.White.copy(0.4f), fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                                    }
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    // Open file
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.addNotification("Loaded $aName as Active Mastering Input.")
+                                            Toast.makeText(context, "$aName selected.", Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.size(26.dp).background(Color.White.copy(0.04f), RoundedCornerShape(50))
+                                    ) {
+                                        Text("▶", fontSize = 10.sp, color = NeonCyan)
+                                    }
+
+                                    // Share Node file
+                                    IconButton(
+                                        onClick = {
+                                            Toast.makeText(context, "System share callback generated for: $aName", Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.size(26.dp).background(Color.White.copy(0.04f), RoundedCornerShape(50))
+                                    ) {
+                                        Text("📤", fontSize = 9.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // Section 10: Learning Center Cards
+            // ==========================================
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "LEARNING CENTER",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+
+                    val tutorials = listOf(
+                        Triple("PRO AUDIO MASTERING SECRETS", "Unlock the hidden solid-state saturator algorithms to double vocal loudness safely.", "LEARN PRO MASTER"),
+                        Triple("OPTIMIZING 10-BAND EQ PARAMETERS", "Visual guide mapping raw frequency spectra to professional car and headphone speakers.", "VIEW EQ GUIDE"),
+                        Triple("AI CREATIVE LYRICS GENERATORS", "How to trigger Gemini LLMs inside our lyrics generation matrix effectively.", "OPEN GUIDE")
+                    )
+
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(tutorials) { (titleText, descText, actionLabel) ->
+                            Column(
+                                modifier = Modifier
+                                    .width(260.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(GlassCardBg)
+                                    .border(1.dp, GlassBorder.copy(0.24f), RoundedCornerShape(12.dp))
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(titleText, color = GoldenAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                Text(descText, color = Color.White.copy(0.6f), fontSize = 9.sp, lineHeight = 12.sp, fontFamily = FontFamily.Monospace)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Button(
+                                    onClick = {
+                                        viewModel.addNotification("Tutorial loaded: $titleText")
+                                        Toast.makeText(context, "Redirecting to $titleText", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text(actionLabel, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Margin bottom to allow scroll clearance above PersistentMiniPlayer
+            item {
+                Spacer(modifier = Modifier.height(96.dp))
+            }
+        }
+
+        // ==========================================
+        // Section 11: Heartbeat-pulsing Red Record FAB
+        // ==========================================
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 20.dp, bottom = 90.dp)
+        ) {
+            val recordActive by viewModel.isRecordingActive.collectAsState()
+            
+            // Pulse glow size animation
+            val fabTransition = rememberInfiniteTransition(label = "fab_pulse")
+            val pulseScale by fabTransition.animateFloat(
+                initialValue = 0.95f,
+                targetValue = 1.15f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1000, easing = LinearOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "fabScale"
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(58.dp)
+                    .graphicsLayer(
+                        scaleX = if (recordActive) 1.0f else pulseScale,
+                        scaleY = if (recordActive) 1.0f else pulseScale
+                    )
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        Brush.radialGradient(
+                            listOf(
+                                Color.Red,
+                                if (recordActive) Color.Red.copy(0.4f) else Color.Red.copy(0.12f)
+                            )
+                        )
+                    )
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = {
+                                viewModel.startRecording()
+                            },
+                            onLongPress = {
+                                // Save a fast Voice Memo directly
+                                val name = "Voice_Memo_" + System.currentTimeMillis() / 1000
+                                viewModel.startRecording()
+                                viewModel.viewModelScope.launch {
+                                    delay(2000)
+                                    viewModel.stopAndSaveRecording(name)
+                                    Toast.makeText(context, "Voice Memo saved automatically: $name", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            onDoubleTap = {
+                                advancedRecorderSettingsOpen = true
+                            }
+                        )
+                    }
+                    .testTag("floating_live_audio_record_fab"),
+                contentAlignment = Alignment.Center
+            ) {
+                // Glow boundary circles
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0xFF04060B))
+                        .border(2.dp, Color.Red, RoundedCornerShape(50)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("🔴", fontSize = 18.sp)
+                }
+            }
+        }
+
+        // ==========================================
+        // LOCAL STATE MODALS & TELEMETRY DIALOGS
+        // ==========================================
+
+        // 1. Interactive Visualization settings overlay panel
+        if (visSettingsOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.8f))
+                    .clickable { visSettingsOpen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .background(Color(0xFF0A0C16), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, GlassBorder, RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { /* Block dismiss */ }
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("VISUALIZATION ENGINE VALUES", color = NeonCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("❌", color = Color.White, fontSize = 11.sp, modifier = Modifier.clickable { visSettingsOpen = false })
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Decay Coefficient: ${(visDecayPeriod * 100).toInt()}%", color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        Slider(
+                            value = visDecayPeriod,
+                            onValueChange = { visDecayPeriod = it },
+                            valueRange = 0.1f..1.0f,
+                            colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan)
+                        )
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("FFT Scale Power: ${visScaleDb.toInt()} dB SPL", color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        Slider(
+                            value = visScaleDb,
+                            onValueChange = { visScaleDb = it },
+                            valueRange = 12f..96f,
+                            colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan)
+                        )
+                    }
+
+                    Button(
+                        onClick = { visSettingsOpen = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("APPLY PHYSICAL GRID EFFECTS", color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // 2. Beautiful File Importer Dialog
+        if (fileImporterOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.8f))
+                    .clickable { fileImporterOpen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .background(Color(0xFF090B12), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, GlassBorder, RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { /* Block dismiss */ }
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("SELECT AUDIO SOURCE FILE", color = NeonCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("❌", color = Color.White, fontSize = 11.sp, modifier = Modifier.clickable { fileImporterOpen = false })
+                    }
+
+                    val samples = listOf(
+                        "guitar_strum_clean_E.wav" to "00:15 • 24-bit PCM",
+                        "rhythm_trap_drums_808.wav" to "00:48 • 24-bit PCM",
+                        "synth_wave_space_intro.wav" to "02:04 • 24-bit PCM",
+                        "ambient_rain_sound_effect.mp3" to "01:30 • 320kbps MP3"
+                    )
+
+                    samples.forEach { (sName, sSpec) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White.copy(0.02f), RoundedCornerShape(6.dp))
+                                .border(0.5.dp, GlassBorder.copy(0.12f), RoundedCornerShape(6.dp))
+                                .clickable {
+                                    viewModel.addNotification("Imported $sName successfully.")
+                                    fileImporterOpen = false
+                                    Toast.makeText(context, "$sName added to project tracks.", Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("📁", fontSize = 14.sp)
+                                Column {
+                                    Text(sName, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                    Text(sSpec, color = Color.White.copy(0.5f), fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                            Text("SELECT", color = NeonCyan, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Audio Cropper/Editor Waveform Dialog
+        if (audioCropperOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.85f))
+                    .clickable { audioCropperOpen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .background(Color(0xFF0F0B18), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, HotViolet.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { /* Block dismiss */ }
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("AUDIO CROPPING WAVEFORM TOOL", color = HotViolet, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("❌", color = Color.White, fontSize = 11.sp, modifier = Modifier.clickable { audioCropperOpen = false })
+                    }
+
+                    Text("Drag gates to prune the active sample duration.", color = Color.White.copy(0.7f), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+
+                    // Simulated Cropper Area with left/right seek gates
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .background(Color.Black.copy(0.4f), RoundedCornerShape(8.dp))
+                            .border(1.dp, HotViolet, RoundedCornerShape(8.dp))
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
+                            val w = size.width
+                            val h = size.height
+                            val lines = 36
+                            val lineGap = w / lines
+
+                            for (i in 0 until lines) {
+                                val valSin = sin(i * 0.25f) * cos(i * 0.12f)
+                                val finalLineHeight = (h * 0.64f) * abs(valSin)
+
+                                drawLine(
+                                    color = NeonCyan,
+                                    start = Offset(i * lineGap, (h - finalLineHeight) / 2f),
+                                    end = Offset(i * lineGap, (h + finalLineHeight) / 2f),
+                                    strokeWidth = 2.dp.toPx()
+                                )
+                            }
+                        }
+
+                        // Left select crop handle
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .width(12.dp)
+                                .background(HotViolet)
+                                .align(Alignment.CenterStart),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("◀", color = Color.White, fontSize = 6.sp)
+                        }
+
+                        // Right select crop handle
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .width(12.dp)
+                                .background(HotViolet)
+                                .align(Alignment.CenterEnd),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("▶", color = Color.White, fontSize = 6.sp)
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            audioCropperOpen = false
+                            viewModel.addNotification("Audio file cropped successfully.")
+                            Toast.makeText(context, "Pruned sample successfully.", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("SAVE CROP SELECTION", color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+        }
+
+        // 4. Vocal Splitter / Karaoke processor dialogue
+        if (karaokeSplitterOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.85f))
+                    .clickable { karaokeSplitterOpen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                var separatorProgress by remember { mutableStateOf(0f) }
+                var separatingState by remember { mutableStateOf("IDLE") }
+
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .background(Color(0xFF070912), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, MintGreen, RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { /* Block dismiss */ }
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("AI MULTI-STEM SPLITTER", color = MintGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("❌", color = Color.White, fontSize = 11.sp, modifier = Modifier.clickable { karaokeSplitterOpen = false })
+                    }
+
+                    Text("Process current track into independent Vocal, Beat, Bass, and Synth stems using DSP separations models.", color = Color.White.copy(0.6f), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+
+                    if (separatingState == "PROCESSING") {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            LinearProgressIndicator(progress = separatorProgress, color = MintGreen, modifier = Modifier.fillMaxWidth())
+                            Text("Neural Stem Isolations: ${(separatorProgress * 100).toInt()}% completed", color = MintGreen, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    } else if (separatingState == "DONE") {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.fillMaxWidth().background(Color.White.copy(0.04f)).padding(8.dp)) {
+                                Text("Vocal Stem: ISOLATED (24-bit WAV)\nBeat Drum Stem: ISOLATED (24-bit WAV)\nMelodics Pad: ISOLATED (24-bit WAV)", color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            if (separatingState == "IDLE") {
+                                separatingState = "PROCESSING"
+                                viewModel.viewModelScope.launch {
+                                    for (p in 1..100) {
+                                        delay(25)
+                                        separatorProgress = p.toFloat() / 100f
+                                    }
+                                    separatingState = "DONE"
+                                    viewModel.addNotification("Karaoke vocals stem extraction built successfully.")
+                                }
+                            } else if (separatingState == "DONE") {
+                                karaokeSplitterOpen = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MintGreen),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (separatingState == "IDLE") "START STEM EXTRACTION" else if (separatingState == "PROCESSING") "PROCESSING NEURAL MASKS..." else "IMPORT SPLIT TRACKS",
+                            color = Color.Black,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        }
+
+        // 5. AI Music progressions composer
+        if (aiMusicComposerOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.85f))
+                    .clickable { aiMusicComposerOpen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                var outputChords by remember { mutableStateOf("Click COMPOSE to generate chord models...") }
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .background(Color(0xFF131521), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, GoldenAmber, RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { /* Block dismiss */ }
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("AI SONGWRITING & CHORDS MATRIX", color = GoldenAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("❌", color = Color.White, fontSize = 11.sp, modifier = Modifier.clickable { aiMusicComposerOpen = false })
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.Black.copy(0.4f), RoundedCornerShape(6.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text(outputChords, color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace, lineHeight = 14.sp)
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = {
+                                outputChords = "AI Output Matrix (Key: F# Minor)\nProgression: F#m - Dmaj7 - Amaj - E5\nTempo Match: 114 BPM\nSynthesizer patches populated."
+                                viewModel.addNotification("AI Progressive chord nodes built.")
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = GoldenAmber),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("COMPOSE PROGRESSION", color = Color.Black, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+
+                        Button(
+                            onClick = {
+                                aiMusicComposerOpen = false
+                                viewModel.setCurrentTab("TOOLS")
+                                viewModel.setSelectedToolId("SYNTH")
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassCardBg),
+                            modifier = Modifier.border(0.5.dp, GoldenAmber, RoundedCornerShape(50))
+                        ) {
+                            Text("PLAY KEYS", color = Color.White, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 6. Audio Repair & gate de-noiser popup
+        if (audioRepairOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.85f))
+                    .clickable { audioRepairOpen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                var clickRemoval by remember { mutableStateOf(true) }
+                var hissRemoval by remember { mutableStateOf(false) }
+
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .background(Color(0xFF090C15), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, GlassBorder, RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { /* Block dismiss */ }
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("AI DE-NOSER & AUDIO REPAIR", color = NeonCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("❌", color = Color.White, fontSize = 11.sp, modifier = Modifier.clickable { audioRepairOpen = false })
+                    }
+
+                    Text("Attenuate background room air hiss, AC hums, and microphone crackles automatically.", color = Color.White.copy(0.6f), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+
+                    ListItem(
+                        headlineContent = { Text("Attenuate Transient Click Artifacts", color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace) },
+                        supportingContent = { Text("Detect and mute pops and crackles", color = Color.LightGray, fontSize = 8.sp, fontFamily = FontFamily.Monospace) },
+                        trailingContent = { Checkbox(checked = clickRemoval, onCheckedChange = { clickRemoval = it }) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+
+                    ListItem(
+                        headlineContent = { Text("Absolute Squelch Noise Gate Hiss", color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace) },
+                        supportingContent = { Text("Attenuates constant hum background air", color = Color.LightGray, fontSize = 8.sp, fontFamily = FontFamily.Monospace) },
+                        trailingContent = { Checkbox(checked = hissRemoval, onCheckedChange = { hissRemoval = it }) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+
+                    Button(
+                        onClick = {
+                            audioRepairOpen = false
+                            viewModel.addNotification("Audio Repair processing complete.")
+                            Toast.makeText(context, "Denoised and declicked wave sample successfully.", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("APPLY CO-PROCESSED MASTER FILTERS", color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+        }
+
+        // 7. HD Recorder advanced settings configuration overlay page
+        if (advancedRecorderSettingsOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.85f))
+                    .clickable { advancedRecorderSettingsOpen = false },
+                contentAlignment = Alignment.Center
+            ) {
+                var selectedFormat by remember { mutableStateOf("WAV") }
+                var selectedSampleRate by remember { mutableStateOf("96kHz") }
+
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .background(Color(0xFF0F0F1A), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, GlassBorder, RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { /* Block dismiss */ }
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("HD AUDIO RECODER SPECIFICATIONS", color = NeonCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text("❌", color = Color.White, fontSize = 11.sp, modifier = Modifier.clickable { advancedRecorderSettingsOpen = false })
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Format:", color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("WAV", "FLAC", "MP3").forEach { fmt ->
+                                val active = selectedFormat == fmt
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (active) NeonCyan else GlassCardBg)
+                                        .clickable { selectedFormat = fmt }
+                                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Text(fmt, color = if (active) Color.Black else Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Sample Rate:", color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("44.1kHz", "48kHz", "96kHz").forEach { rate ->
+                                val active = selectedSampleRate == rate
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (active) NeonCyan else GlassCardBg)
+                                        .clickable { selectedSampleRate = rate }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text(rate, color = if (active) Color.Black else Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            advancedRecorderSettingsOpen = false
+                            viewModel.addNotification("HD Recorder settings locked: WAV @ 96kHz.")
+                            Toast.makeText(context, "Configurations loaded to audio recorder module.", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("LOCK RECORDING HARDWARE GRID", color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Custom data container for tool keys
+data class Quadruple<A, B, C, D>(
+    val label: A,
+    val unicode: B,
+    val action: C,
+    val color: D
+)
+
+@Composable
+fun OldHomeScreenView(viewModel: SoundLabViewModel) {
     val activeProject by viewModel.selectedProject.collectAsState()
     val allProjects by viewModel.allProjects.collectAsState()
     val allPresets by viewModel.allPresets.collectAsState()
