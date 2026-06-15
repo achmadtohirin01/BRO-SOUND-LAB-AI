@@ -462,6 +462,7 @@ fun MainDAWInterface(viewModel: SoundLabViewModel) {
                     when (currentTab) {
                         "HOME" -> HomeScreenView(viewModel)
                         "PROJECTS" -> ProjectsScreenView(viewModel)
+                        "WORKFLOWS" -> WorkflowsScreenView(viewModel)
                         "TOOLS" -> ToolsScreenView(viewModel)
                         "PROFILE" -> ProfileScreenView(viewModel)
                     }
@@ -844,8 +845,8 @@ fun PhoneNavigationBar(viewModel: SoundLabViewModel) {
             Triple("HOME", "🏠", "Home"),
             Triple("PROJECTS", "📂", "Projects"),
             Triple("CREATE", "➕", "Create"),
-            Triple("TOOLS", "🎛️", "Tools"),
-            Triple("PROFILE", "👤", "Profile")
+            Triple("WORKFLOWS", "🔄", "Workflows"),
+            Triple("TOOLS", "🎛️", "Tools")
         )
 
         navItems.forEach { (tabId, unicode, label) ->
@@ -929,8 +930,8 @@ fun AdaptiveNavRail(viewModel: SoundLabViewModel) {
             Triple("HOME", "🏠", "Home"),
             Triple("PROJECTS", "📂", "Projects"),
             Triple("CREATE", "➕", "Create"),
-            Triple("TOOLS", "🎛️", "Tools"),
-            Triple("PROFILE", "👤", "Profile")
+            Triple("WORKFLOWS", "🔄", "Workflows"),
+            Triple("TOOLS", "🎛️", "Tools")
         )
 
         navItems.forEach { (tabId, unicode, label) ->
