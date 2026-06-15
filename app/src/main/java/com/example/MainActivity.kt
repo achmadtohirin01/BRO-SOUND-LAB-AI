@@ -34,5 +34,9 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun getAttributionTag(): String? {
+        return "audio"
+    }
 }
 

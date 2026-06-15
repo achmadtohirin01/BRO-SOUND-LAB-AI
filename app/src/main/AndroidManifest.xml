@@ -5,7 +5,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <attribution
+        android:tag="audio"
+        android:label="@string/app_name" />
+
     <application
+        android:name=".BroSoundLabApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
