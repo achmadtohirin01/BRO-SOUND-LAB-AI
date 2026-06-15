@@ -7,6 +7,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -34,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -51,6 +53,8 @@ import com.example.data.database.PresetEntity
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.PI
+import kotlin.math.sin
 
 // --- THEME COLOR SPECIFICATION ---
 val SpaceObsidian = Color(0xFF04060B)
@@ -100,31 +104,112 @@ fun StudioDashboard(viewModel: SoundLabViewModel) {
             SynthesizerKeyboardController(viewModel)
         }
 
-        // Floating toast message indicator for AI operations
+        // Floating Toast message indicator for AI operations with smooth animations
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 120.dp)
         ) {
-            when (uiState) {
-                is SoundLabUiState.Loading -> {
-                    CircularProgressIndicator(
-                        color = NeonCyan,
-                        modifier = Modifier
-                            .size(44.dp)
-                            .testTag("ai_loading_spinner")
-                    )
+            AnimatedVisibility(
+                visible = uiState !is SoundLabUiState.Idle,
+                enter = fadeIn(animationSpec = tween(250)) + scaleIn(animationSpec = tween(250)),
+                exit = fadeOut(animationSpec = tween(200)) + scaleOut(animationSpec = tween(200))
+            ) {
+                when (uiState) {
+                    is SoundLabUiState.Loading -> {
+                        CircularProgressIndicator(
+                            color = NeonCyan,
+                            modifier = Modifier
+                                .size(44.dp)
+                                .testTag("ai_loading_spinner")
+                        )
+                    }
+                    is SoundLabUiState.Success -> {
+                        val alertMessage = (uiState as SoundLabUiState.Success).message
+                        FloatingAlertBubble(message = alertMessage, color = MintGreen)
+                    }
+                    is SoundLabUiState.Error -> {
+                        val errMsg = (uiState as SoundLabUiState.Error).throwable.message ?: "Unknown Error"
+                        FloatingAlertBubble(message = errMsg, color = Color.Red)
+                    }
+                    else -> {}
                 }
-                is SoundLabUiState.Success -> {
-                    val alertMessage = (uiState as SoundLabUiState.Success).message
-                    FloatingAlertBubble(message = alertMessage, color = MintGreen)
-                }
-                is SoundLabUiState.Error -> {
-                    val errMsg = (uiState as SoundLabUiState.Error).throwable.message ?: "Unknown Error"
-                    FloatingAlertBubble(message = errMsg, color = Color.Red)
-                }
-                else -> {}
             }
+        }
+    }
+}
+
+@Composable
+fun PulsingLogoBadge(isPlaying: Boolean) {
+    val infiniteTransition = rememberInfiniteTransition(label = "logo_glow")
+    val glowScale by infiniteTransition.animateFloat(
+        initialValue = 0.95f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scale"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.9f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "alpha"
+    )
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Canvas(modifier = Modifier.size(24.dp)) {
+            val width = size.width
+            val height = size.height
+            val scale = if (isPlaying) glowScale else 1.0f
+
+            val brush = Brush.linearGradient(
+                colors = listOf(NeonCyan, ElectricIndigo, HotViolet)
+            )
+
+            // Draw concentric glowing ring
+            drawCircle(
+                brush = brush,
+                radius = 12.dp.toPx() * scale,
+                alpha = if (isPlaying) 0.15f * pulseAlpha else 0.08f,
+                style = Stroke(width = 2.dp.toPx())
+            )
+
+            // Draw the 3 lines representing spectrum wave
+            val spacing = 4.dp.toPx()
+            val barW = 3.dp.toPx()
+
+            // Bar 1 (Left) - short
+            val h1 = height * 0.4f * (if (isPlaying) scale else 1.0f)
+            drawRoundRect(
+                brush = brush,
+                topLeft = Offset(width / 2 - barW / 2 - spacing, height / 2 - h1 / 2),
+                size = Size(barW, h1),
+                cornerRadius = CornerRadius(2f, 2f)
+            )
+            // Bar 2 (Middle) - tall
+            val h2 = height * 0.8f * (if (isPlaying) 1.1f * scale else 1.0f)
+            drawRoundRect(
+                brush = brush,
+                topLeft = Offset(width / 2 - barW / 2, height / 2 - h2 / 2),
+                size = Size(barW, h2),
+                cornerRadius = CornerRadius(2f, 2f)
+            )
+            // Bar 3 (Right) - medium
+            val h3 = height * 0.6f * (if (isPlaying) scale else 1.0f)
+            drawRoundRect(
+                brush = brush,
+                topLeft = Offset(width / 2 - barW / 2 + spacing, height / 2 - h3 / 2),
+                size = Size(barW, h3),
+                cornerRadius = CornerRadius(2f, 2f)
+            )
         }
     }
 }
@@ -139,28 +224,38 @@ fun StudioHeader(viewModel: SoundLabViewModel) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .background(GlassCardBg, RoundedCornerShape(12.dp))
-            .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
+            .border(
+                1.dp,
+                Brush.horizontalGradient(listOf(GlassBorder, GlassBorder.copy(0.12f))),
+                RoundedCornerShape(12.dp)
+            )
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Column {
-            Text(
-                text = "BRO SOUND LAB AI",
-                color = NeonCyan,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 1.sp,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = activeProject?.title ?: "DASHBOARD SESSION ENGINE",
-                color = Color.White.copy(alpha = 0.8f),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            PulsingLogoBadge(isPlaying = isSynthPlaying)
+            Column {
+                Text(
+                    text = "BRO SOUND LAB AI",
+                    color = NeonCyan,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = activeProject?.title ?: "DASHBOARD SESSION ENGINE",
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
 
         // Live stats pill
@@ -216,111 +311,313 @@ fun StudioHeader(viewModel: SoundLabViewModel) {
 @Composable
 fun LiveVisualizerRack(viewModel: SoundLabViewModel) {
     val spectrum by viewModel.audioEngine.spectrumFlow.collectAsState()
+    val activeMidiNote = viewModel.audioEngine.activeMidiNote
+    val isSynthPlaying by viewModel.isSynthPlaying.collectAsState()
     val vuLeft by viewModel.audioEngine.vuLeftFlow.collectAsState()
     val vuRight by viewModel.audioEngine.vuRightFlow.collectAsState()
+
+    val peakHoldValues = remember { FloatArray(10) { 0.1f } }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .height(96.dp)
-            .background(Color(0xFF0F111D), RoundedCornerShape(12.dp))
-            .border(1.dp, GlassBorder.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+            .height(112.dp)
+            .background(Color(0xFF080A12), RoundedCornerShape(12.dp))
+            .border(
+                1.dp,
+                Brush.verticalGradient(listOf(GlassBorder.copy(alpha = 0.3f), Color.Transparent)),
+                RoundedCornerShape(12.dp)
+            )
             .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // A. FFT Dynamic Spectrum Bars
-        Canvas(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .testTag("fft_spectrum_canvas")
-        ) {
-            val width = size.width
-            val height = size.height
-            val spacing = 6f
-            val totalBars = 10
-            val barWidth = (width - (spacing * (totalBars - 1))) / totalBars
-
-            for (i in 0 until totalBars) {
-                val magnitude = spectrum.getOrElse(i) { 0.1f }.coerceIn(0.05f, 1.0f)
-                val barHeight = height * magnitude
-                val x = i * (barWidth + spacing)
-                val y = height - barHeight
-
-                val gradient = Brush.verticalGradient(
-                    colors = listOf(NeonCyan, ElectricIndigo),
-                    startY = y,
-                    endY = height
-                )
-
-                // Render customized top peak segment + bar trunk
-                drawRoundRect(
-                    brush = gradient,
-                    topLeft = Offset(x, y),
-                    size = Size(barWidth, barHeight),
-                    cornerRadius = CornerRadius(4f, 4f)
-                )
-            }
-        }
-
-        // B. Dual Channel stereo VU level meter meters
+        // A. Curved liquid FFT Spectrum with floating peak hold LED dots
         Column(
             modifier = Modifier
-                .width(44.dp)
+                .weight(1.1f)
+                .fillMaxHeight()
+        ) {
+            Text(
+                text = "SPECTRAL FFT",
+                color = NeonCyan.copy(0.6f),
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            SmoothFftAnalyzer(
+                spectrum = spectrum,
+                peakHoldValues = peakHoldValues,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag("fft_spectrum_canvas")
+            )
+        }
+
+        // B. Retro green/cyan analog Cathode Oscilloscope
+        Column(
+            modifier = Modifier
+                .weight(0.9f)
+                .fillMaxHeight()
+        ) {
+            Text(
+                text = "CATHODE WAV",
+                color = HotViolet.copy(0.6f),
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            LiveOscilloscope(
+                isSynthPlaying = isSynthPlaying,
+                activeMidiNote = activeMidiNote,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        // C. True Dual Stereo VU meters (Segmented physical LEDs)
+        Column(
+            modifier = Modifier
+                .width(52.dp)
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.SpaceEvenly
         ) {
-            // Left Channel Indicator Label
             VuGaugesSegment("L", vuLeft)
-            // Right Channel Indicator Label
             VuGaugesSegment("R", vuRight)
         }
     }
 }
 
 @Composable
+fun SmoothFftAnalyzer(
+    spectrum: FloatArray,
+    peakHoldValues: FloatArray,
+    decayRate: Float = 0.008f,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+        val totalBands = spectrum.size
+        val path = Path()
+        val dx = width / (totalBands - 1)
+
+        // Interpolate points smoothly
+        for (i in 0 until totalBands) {
+            val magnitude = spectrum[i].coerceIn(0.02f, 1.0f)
+            val hVal = height * magnitude
+            val x = i * dx
+            val y = height - hVal
+
+            if (i == 0) {
+                path.moveTo(x, y)
+            } else {
+                val prevX = (i - 1) * dx
+                val prevMag = spectrum[i - 1].coerceIn(0.02f, 1.0f)
+                val prevY = height - (height * prevMag)
+
+                path.cubicTo(
+                    prevX + dx / 2f, prevY,
+                    x - dx / 2f, y,
+                    x, y
+                )
+            }
+        }
+
+        // Liquid color filling
+        val fillPath = Path().apply {
+            addPath(path)
+            lineTo(width, height)
+            lineTo(0f, height)
+            close()
+        }
+
+        drawPath(
+            path = fillPath,
+            brush = Brush.verticalGradient(
+                colors = listOf(HotViolet.copy(0.25f), NeonCyan.copy(0.12f), Color.Transparent),
+                startY = 0f,
+                endY = height
+            )
+        )
+
+        // Glowing wave line
+        drawPath(
+            path = path,
+            brush = Brush.horizontalGradient(
+                colors = listOf(NeonCyan, ElectricIndigo, HotViolet)
+            ),
+            style = Stroke(width = 2.dp.toPx())
+        )
+
+        // Draw hardware LED Peak Hold caps
+        for (i in 0 until totalBands) {
+            val currentVal = spectrum[i]
+            var peak = peakHoldValues[i]
+            if (currentVal > peak) {
+                peak = currentVal
+            } else {
+                peak = (peak - decayRate).coerceAtLeast(0.02f)
+            }
+            peakHoldValues[i] = peak
+
+            val capW = 12f
+            val capX = (i * dx) - (capW / 2f)
+            val capY = height - (height * peak) - 4f
+
+            if (capY >= 0 && capY < height) {
+                drawRoundRect(
+                    color = when {
+                        peak > 0.85f -> Color.Red
+                        peak > 0.6f -> GoldenAmber
+                        else -> NeonCyan
+                    },
+                    topLeft = Offset(capX.coerceIn(0f, width - capW), capY),
+                    size = Size(capW, 2.dp.toPx()),
+                    cornerRadius = CornerRadius(1.5f, 1.5f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun LiveOscilloscope(
+    isSynthPlaying: Boolean,
+    activeMidiNote: Float,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "osci_phase")
+    val phaseOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * java.lang.Math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "phase"
+    )
+
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+        val centerY = height / 2
+
+        // 1. Draw cathode background grid
+        val gridColor = Color(0xFF00E5FF).copy(alpha = 0.06f)
+        val pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f)
+
+        for (i in 1..3) {
+            val y = height * (i / 4f)
+            drawLine(
+                color = gridColor,
+                start = Offset(0f, y),
+                end = Offset(width, y),
+                strokeWidth = 1.dp.toPx(),
+                pathEffect = pathEffect
+            )
+        }
+        for (i in 1..7) {
+            val x = width * (i / 8f)
+            drawLine(
+                color = gridColor,
+                start = Offset(x, 0f),
+                end = Offset(x, height),
+                strokeWidth = 1.dp.toPx(),
+                pathEffect = pathEffect
+            )
+        }
+
+        // Center line scans
+        drawLine(
+            color = Color(0xFF00E5FF).copy(0.12f),
+            start = Offset(0f, centerY),
+            end = Offset(width, centerY),
+            strokeWidth = 1.dp.toPx()
+        )
+        drawLine(
+            color = Color(0xFF00E5FF).copy(0.12f),
+            start = Offset(width / 2, 0f),
+            end = Offset(width / 2, height),
+            strokeWidth = 1.dp.toPx()
+        )
+
+        // 2. Compute wave trace path
+        val pointsCount = 60
+        val path = Path()
+        val dx = width / (pointsCount - 1)
+        val cycles = if (isSynthPlaying) {
+            if (activeMidiNote > 0f) (activeMidiNote / 120f).coerceIn(2.5f, 6.5f) else 3.5f
+        } else {
+            1.2f
+        }
+        val amplitude = if (isSynthPlaying) height * 0.35f else height * 0.05f
+
+        for (i in 0 until pointsCount) {
+            val x = i * dx
+            val normX = i.toFloat() / (pointsCount - 1)
+            val angle = (normX * 2f * PI.toFloat() * cycles) - phaseOffset
+
+            val s1 = sin(angle)
+            val harm = if (isSynthPlaying) 0.15f * sin(angle * 3f + phaseOffset) else 0f
+            val noise = (Math.random().toFloat() * 2f - 1f) * (if (isSynthPlaying) 0.02f else 0.005f)
+
+            val yOffset = amplitude * (s1 + harm + noise)
+            val y = centerY + yOffset
+
+            if (i == 0) {
+                path.moveTo(x, y)
+            } else {
+                path.lineTo(x, y)
+            }
+        }
+
+        // Double trace line for cathode glow effect
+        drawPath(
+            path = path,
+            color = NeonCyan.copy(0.2f),
+            style = Stroke(width = 4.dp.toPx())
+        )
+        drawPath(
+            path = path,
+            color = Color.White,
+            style = Stroke(width = 1.5.dp.toPx())
+        )
+    }
+}
+
+@Composable
 fun VuGaugesSegment(label: String, value: Float) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
+    Column {
         Text(
             text = label,
             color = Color.White.copy(alpha = 0.5f),
-            fontSize = 9.sp,
+            fontSize = 8.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
-            modifier = Modifier.width(10.dp)
+            modifier = Modifier.padding(bottom = 2.dp)
         )
-        Canvas(
-            modifier = Modifier
-                .weight(1f)
-                .height(10.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(1.dp)
         ) {
-            val width = size.width
-            val height = size.height
-            val fillWidth = (width * value).coerceIn(0f, width)
-
-            // Background gauge track
-            drawRoundRect(
-                color = Color.White.copy(0.07f),
-                size = size,
-                cornerRadius = CornerRadius(2f, 2f)
-            )
-
-            // Active glow segment
-            if (fillWidth > 0) {
-                val color = when {
-                    value > 0.85f -> Color.Red
-                    value > 0.6f -> GoldenAmber
-                    else -> MintGreen
+            val numSegments = 10
+            for (step in 0 until numSegments) {
+                val boundary = step.toFloat() / numSegments
+                val isActive = value >= boundary
+                val segmentColor = when {
+                    step >= 8 -> if (isActive) Color.Red else Color.Red.copy(0.12f)
+                    step >= 6 -> if (isActive) GoldenAmber else GoldenAmber.copy(0.12f)
+                    else -> if (isActive) MintGreen else MintGreen.copy(0.12f)
                 }
-                drawRoundRect(
-                    color = color,
-                    size = Size(fillWidth, height),
-                    cornerRadius = CornerRadius(2f, 2f)
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(1.dp))
+                        .background(segmentColor)
                 )
             }
         }
@@ -385,7 +682,7 @@ fun WidescreenDesktopWorkspace(viewModel: SoundLabViewModel) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .height(290.dp),
+            .height(310.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Box(
@@ -534,6 +831,23 @@ fun DspMasterRack(viewModel: SoundLabViewModel) {
 
         Spacer(modifier = Modifier.height(10.dp))
 
+        // XY Performance Modulation Pad (Delay feedback and Reverb Size)
+        Text(
+            text = "XY SOUNDSTAGE WARPER",
+            color = GoldenAmber,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        XyPerformancePad(
+            delayFeedback = delayFeedback,
+            reverbDecay = reverbDecay,
+            onXChange = { viewModel.setDelayFeedbackLevel(it) },
+            onYChange = { viewModel.setReverbDecayLevel(it) },
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+
         // Rack sliders
         RackKnobController("SATURATION OVERDRIVE", drive, 0f..1.5f, String.format("%.2fx", drive + 1.0f), "drive_slider") {
             viewModel.setDriveLevel(it)
@@ -589,6 +903,154 @@ fun DspMasterRack(viewModel: SoundLabViewModel) {
 }
 
 @Composable
+fun XyPerformancePad(
+    delayFeedback: Float,
+    reverbDecay: Float,
+    onXChange: (Float) -> Unit,
+    onYChange: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var padWidth by remember { mutableStateOf(1f) }
+    var padHeight by remember { mutableStateOf(1f) }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(116.dp)
+            .background(Color(0xFF06070E), RoundedCornerShape(12.dp))
+            .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
+            .onSizeChanged {
+                padWidth = it.width.toFloat().coerceAtLeast(1f)
+                padHeight = it.height.toFloat().coerceAtLeast(1f)
+            }
+            .pointerInput(Unit) {
+                detectDragGestures { change, _ ->
+                    change.consume()
+                    val xPct = (change.position.x / padWidth).coerceIn(0f, 1f)
+                    val yPct = (1f - (change.position.y / padHeight)).coerceIn(0f, 1f)
+                    onXChange(xPct * 0.7f)
+                    onYChange(yPct * 0.85f)
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    val xPct = (offset.x / padWidth).coerceIn(0f, 1f)
+                    val yPct = (1f - (offset.y / padHeight)).coerceIn(0f, 1f)
+                    onXChange(xPct * 0.7f)
+                    onYChange(yPct * 0.85f)
+                }
+            }
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val h = size.height
+            val w = size.width
+
+            // Draw technical grid lines
+            val gridColor = GlassBorder.copy(alpha = 0.12f)
+            val strokeGrid = 1.dp.toPx()
+            val dashPattern = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+
+            for (i in 1..3) {
+                val y = h * (i / 4f)
+                drawLine(
+                    color = gridColor,
+                    start = Offset(0f, y),
+                    end = Offset(w, y),
+                    strokeWidth = strokeGrid,
+                    pathEffect = dashPattern
+                )
+            }
+            for (i in 1..3) {
+                val x = w * (i / 4f)
+                drawLine(
+                    color = gridColor,
+                    start = Offset(x, 0f),
+                    end = Offset(x, h),
+                    strokeWidth = strokeGrid,
+                    pathEffect = dashPattern
+                )
+            }
+
+            // Draw concentric background sonar circles
+            drawCircle(
+                color = GlassBorder.copy(0.04f),
+                radius = h * 0.35f,
+                center = Offset(w / 2, h / 2)
+            )
+
+            // Convert exact floats to 2D drawing positions
+            val pctX = (delayFeedback / 0.7f).coerceIn(0f, 1f)
+            val pctY = (reverbDecay / 0.85f).coerceIn(0f, 1f)
+
+            val targetX = w * pctX
+            val targetY = h * (1f - pctY)
+
+            // Dynamic Crosshair targeting line guides
+            drawLine(
+                color = NeonCyan.copy(0.25f),
+                start = Offset(0f, targetY),
+                end = Offset(w, targetY),
+                strokeWidth = 1.dp.toPx()
+            )
+            drawLine(
+                color = NeonCyan.copy(0.25f),
+                start = Offset(targetX, 0f),
+                end = Offset(targetX, h),
+                strokeWidth = 1.dp.toPx()
+            )
+
+            // Outer target bloom
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(NeonCyan.copy(0.25f), Color.Transparent),
+                    center = Offset(targetX, targetY),
+                    radius = 14.dp.toPx()
+                ),
+                radius = 14.dp.toPx(),
+                center = Offset(targetX, targetY)
+            )
+
+            // Inner core dot
+            drawCircle(
+                color = Color.White,
+                radius = 4.dp.toPx(),
+                center = Offset(targetX, targetY)
+            )
+            drawCircle(
+                color = NeonCyan,
+                radius = 4.dp.toPx(),
+                center = Offset(targetX, targetY),
+                style = Stroke(2.dp.toPx())
+            )
+        }
+
+        // Labels overlay
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(6.dp)
+                .align(Alignment.BottomStart),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "← SLOWER DELAY | FASTER DELAY →",
+                color = Color.White.copy(0.35f),
+                fontSize = 7.5.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+            Text(
+                text = "REVERB SIZE (Y) ↑",
+                color = Color.White.copy(0.35f),
+                fontSize = 7.5.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+}
+
+@Composable
 fun RackKnobController(
     label: String,
     value: Float,
@@ -635,7 +1097,7 @@ fun RackKnobController(
 
 @Composable
 fun AiStudioAssistantPanel(viewModel: SoundLabViewModel) {
-    var aiFeatureTab by remember { mutableStateOf(0) } // 0: Mastering prompt, 1: Lyric builder prompt
+    var aiFeatureTab by remember { mutableStateOf(0) } // 0: Mastering advisor, 1: Lyrics builder workspace
     var masteringPromptText by remember { mutableStateOf("") }
     var lyricsPromptText by remember { mutableStateOf("") }
     val activeProject by viewModel.selectedProject.collectAsState()
@@ -685,7 +1147,6 @@ fun AiStudioAssistantPanel(viewModel: SoundLabViewModel) {
         Spacer(modifier = Modifier.height(8.dp))
 
         if (aiFeatureTab == 0) {
-            // A. AI MASTERING ASSISTANT
             Text(
                 text = "Describe your audio characteristics. Gemini will instantly synthesize custom filter coefficients, thresholds and effects delay lines:",
                 color = Color.White.copy(alpha = 0.6f),
@@ -721,11 +1182,12 @@ fun AiStudioAssistantPanel(viewModel: SoundLabViewModel) {
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Suggestions rows
             Text("SUGGESTIONS:", color = Color.White.copy(0.4f), fontSize = 8.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
             Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 promptSuggestions.forEach { suggestion ->
@@ -760,7 +1222,6 @@ fun AiStudioAssistantPanel(viewModel: SoundLabViewModel) {
             }
 
         } else {
-            // B. AI LYRICS BUILDER
             Text(
                 text = "Enter song theme or lyrics prompts. Gemini will build complete lyrics maps, chord structures, recommended BPM, and title coordinates:",
                 color = Color.White.copy(alpha = 0.6f),
@@ -813,7 +1274,6 @@ fun AiStudioAssistantPanel(viewModel: SoundLabViewModel) {
                 Text("GENERATE SONG MATRIX", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black)
             }
 
-            // Display Active lyric maps if active
             activeProject?.lyrics?.let { l ->
                 if (l.isNotBlank()) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -923,16 +1383,47 @@ fun SessionArchivePanel(viewModel: SoundLabViewModel) {
                     .padding(8.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "No recorded sessions. Create a project above or load a lyric script to get started.",
-                    color = Color.White.copy(alpha = 0.4f),
-                    fontSize = 10.sp,
-                    textAlign = TextAlign.Center
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Vector cassette outline for nice empty state
+                    Canvas(modifier = Modifier.size(48.dp)) {
+                        drawRoundRect(
+                            color = GlassBorder.copy(alpha = 0.25f),
+                            size = Size(48.dp.toPx(), 28.dp.toPx()),
+                            topLeft = Offset(0f, 10.dp.toPx()),
+                            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
+                            style = Stroke(width = 1.5.dp.toPx())
+                        )
+                        // Left Reel
+                        drawCircle(
+                            color = GlassBorder.copy(alpha = 0.25f),
+                            radius = 6.dp.toPx(),
+                            center = Offset(16.dp.toPx(), 24.dp.toPx()),
+                            style = Stroke(width = 1.dp.toPx())
+                        )
+                        // Right Reel
+                        drawCircle(
+                            color = GlassBorder.copy(alpha = 0.25f),
+                            radius = 6.dp.toPx(),
+                            center = Offset(32.dp.toPx(), 24.dp.toPx()),
+                            style = Stroke(width = 1.dp.toPx())
+                        )
+                    }
+                    Text(
+                        text = "No recorded sessions. Create a project above or load a lyric script to get started.",
+                        color = Color.White.copy(alpha = 0.4f),
+                        fontSize = 10.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().height(120.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(projects) { project ->
@@ -991,8 +1482,12 @@ fun SynthesizerKeyboardController(viewModel: SoundLabViewModel) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF0F111C), RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-            .border(1.dp, GlassBorder.copy(alpha = 0.6f), RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+            .background(Color(0xFF0C0E18), RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+            .border(
+                1.dp,
+                Brush.verticalGradient(listOf(GlassBorder, Color.Transparent)),
+                RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+            )
             .padding(12.dp)
     ) {
         Row(
@@ -1020,41 +1515,68 @@ fun SynthesizerKeyboardController(viewModel: SoundLabViewModel) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
+                .height(58.dp)
                 .testTag("synth_keyboard_row"),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             viewModel.keyFrequencies.forEach { (noteName, frequency) ->
                 val isActive = keyActiveMap[noteName] == true
-                Box(
+
+                Column(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
-                        .background(if (isActive) GoldenAmber else Color.White)
-                        .border(1.dp, SpaceObsidian, RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
-                        .pointerInput(noteName) {
-                            detectTapGestures(
-                                onPress = {
-                                    keyActiveMap = keyActiveMap.toMutableMap().apply { put(noteName, true) }
-                                    viewModel.playNoteOnPress(frequency)
-                                    tryAwaitRelease()
-                                    keyActiveMap = keyActiveMap.toMutableMap().apply { put(noteName, false) }
-                                    viewModel.stopNoteOnRelease()
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Small glowing LED strip above each active key
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (isActive) Brush.horizontalGradient(listOf(NeonCyan, HotViolet))
+                                else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                            )
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
+                            .background(
+                                brush = if (isActive) {
+                                    Brush.verticalGradient(listOf(GoldenAmber, GoldenAmber.copy(alpha = 0.6f)))
+                                } else {
+                                    Brush.verticalGradient(listOf(Color.White, Color(0xFFE2E6F0)))
                                 }
                             )
-                        }
-                        .testTag("key_$noteName"),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    Text(
-                        text = noteName,
-                        color = Color.Black,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        modifier = Modifier.padding(bottom = 4.dp),
-                        fontFamily = FontFamily.Monospace
-                    )
+                            .border(1.dp, SpaceObsidian, RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
+                            .pointerInput(noteName) {
+                                detectTapGestures(
+                                    onPress = {
+                                        keyActiveMap = keyActiveMap.toMutableMap().apply { put(noteName, true) }
+                                        viewModel.playNoteOnPress(frequency)
+                                        tryAwaitRelease()
+                                        keyActiveMap = keyActiveMap.toMutableMap().apply { put(noteName, false) }
+                                        viewModel.stopNoteOnRelease()
+                                    }
+                                )
+                            }
+                            .testTag("key_$noteName"),
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        Text(
+                            text = noteName,
+                            color = Color.Black,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                 }
             }
         }
