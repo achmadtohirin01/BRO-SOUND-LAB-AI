@@ -1,5 +1,7 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 package com.example.ui
 
+import androidx.lifecycle.viewModelScope
 import android.content.res.Configuration
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -2825,6 +2827,9 @@ fun HomeScreenView(viewModel: SoundLabViewModel) {
         }
     }
 }
+
+@Composable
+fun HomeScreenViewDuplicate_NotUsed(viewModel: SoundLabViewModel) {
     val activeProject by viewModel.selectedProject.collectAsState()
     val allProjects by viewModel.allProjects.collectAsState()
     val allPresets by viewModel.allPresets.collectAsState()
