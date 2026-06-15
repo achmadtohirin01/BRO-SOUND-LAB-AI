@@ -1,0 +1,6 @@
+{
+  "name": "BRO SOUND LAB AI",
+  "description": "Enterprise-grade professional AI audio studio, real-time equalizer, DAW signal rack, and lyrics generator powered by Gemini 3.5-Flash.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
