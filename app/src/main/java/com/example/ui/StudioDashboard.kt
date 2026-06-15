@@ -3,25 +3,21 @@ package com.example.ui
 import android.content.res.Configuration
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
-import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +30,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
@@ -56,7 +53,7 @@ import java.util.*
 import kotlin.math.PI
 import kotlin.math.sin
 
-// --- THEME COLOR SPECIFICATION ---
+// --- PREMIUM NEON PALETTE SPECIFICATION ---
 val SpaceObsidian = Color(0xFF04060B)
 val GlassCardBg = Color(0x1F1A2235)
 val GlassBorder = Color(0x336C63FF)
@@ -65,12 +62,11 @@ val ElectricIndigo = Color(0xFF7B2CBF)
 val HotViolet = Color(0xFFE040FB)
 val MintGreen = Color(0xFF00E676)
 val GoldenAmber = Color(0xFFFFB300)
+val DarkGunmetal = Color(0xFF131521)
 
 @Composable
 fun StudioDashboard(viewModel: SoundLabViewModel) {
-    val configuration = LocalConfiguration.current
-    val isTablet = configuration.screenWidthDp >= 720 || configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val uiState by viewModel.uiState.collectAsState()
+    val startupState by viewModel.startupStage.collectAsState()
 
     Box(
         modifier = Modifier
@@ -80,402 +76,1489 @@ fun StudioDashboard(viewModel: SoundLabViewModel) {
                     colors = listOf(SpaceObsidian, Color(0xFF0C0E17), Color(0xFF131521))
                 )
             )
-            .windowInsetsPadding(WindowInsets.safeDrawing)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // 1. Workspace Stats & Controls Header
-            StudioHeader(viewModel)
-
-            // 2. Real-Time Wave & FFT Analyzer Desk
-            LiveVisualizerRack(viewModel)
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // 3. Main Workspace Division (Tablet 3-Pane vs Compact 1-Column)
-            if (isTablet) {
-                WidescreenDesktopWorkspace(viewModel)
-            } else {
-                CompactWorkspaceDeck(viewModel)
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // 4. Anchor Interactive Piano Keys Synthesizer
-            SynthesizerKeyboardController(viewModel)
-        }
-
-        // Floating Toast message indicator for AI operations with smooth animations
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 120.dp)
-        ) {
-            AnimatedVisibility(
-                visible = uiState !is SoundLabUiState.Idle,
-                enter = fadeIn(animationSpec = tween(250)) + scaleIn(animationSpec = tween(250)),
-                exit = fadeOut(animationSpec = tween(200)) + scaleOut(animationSpec = tween(200))
-            ) {
-                when (uiState) {
-                    is SoundLabUiState.Loading -> {
-                        CircularProgressIndicator(
-                            color = NeonCyan,
-                            modifier = Modifier
-                                .size(44.dp)
-                                .testTag("ai_loading_spinner")
-                        )
-                    }
-                    is SoundLabUiState.Success -> {
-                        val alertMessage = (uiState as SoundLabUiState.Success).message
-                        FloatingAlertBubble(message = alertMessage, color = MintGreen)
-                    }
-                    is SoundLabUiState.Error -> {
-                        val errMsg = (uiState as SoundLabUiState.Error).throwable.message ?: "Unknown Error"
-                        FloatingAlertBubble(message = errMsg, color = Color.Red)
-                    }
-                    else -> {}
-                }
-            }
+        when (startupState) {
+            StartupStage.SPLASH -> SplashScreenView(viewModel)
+            StartupStage.INITIALIZING -> SystemInitializationView(viewModel)
+            StartupStage.PERMISSION_CHECK -> PermissionCheckView(viewModel)
+            StartupStage.ONBOARDING -> OnboardingScreenView(viewModel)
+            StartupStage.MAIN_DASHBOARD -> MainDAWInterface(viewModel)
         }
     }
 }
 
+// ==========================================
+// 1. APP STARTUP FLOW SCREENS
+// ==========================================
+
 @Composable
-fun PulsingLogoBadge(isPlaying: Boolean) {
-    val infiniteTransition = rememberInfiniteTransition(label = "logo_glow")
-    val glowScale by infiniteTransition.animateFloat(
-        initialValue = 0.95f,
-        targetValue = 1.05f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "scale"
-    )
-    val pulseAlpha by infiniteTransition.animateFloat(
+fun SplashScreenView(viewModel: SoundLabViewModel) {
+    val infiniteTransition = rememberInfiniteTransition(label = "splash")
+    val alphaAnim by infiniteTransition.animateFloat(
         initialValue = 0.3f,
-        targetValue = 0.9f,
+        targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1400, easing = FastOutSlowInEasing),
+            animation = tween(1000, easing = LinearOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "alpha"
     )
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .drawBehind {
+                // Cyber audio grid background
+                val brickW = 40.dp.toPx()
+                val brickH = 40.dp.toPx()
+                val gridColor = GlassBorder.copy(alpha = 0.05f)
+                for (x in 0 until (size.width / brickW).toInt() + 1) {
+                    drawLine(gridColor, Offset(x * brickW, 0f), Offset(x * brickW, size.height))
+                }
+                for (y in 0 until (size.height / brickH).toInt() + 1) {
+                    drawLine(gridColor, Offset(0f, y * brickH), Offset(size.width, y * brickH))
+                }
+            },
+        contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.size(24.dp)) {
-            val width = size.width
-            val height = size.height
-            val scale = if (isPlaying) glowScale else 1.0f
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Canvas(modifier = Modifier.size(80.dp)) {
+                // Double neon logo ring
+                drawCircle(
+                    brush = Brush.linearGradient(listOf(NeonCyan, HotViolet)),
+                    radius = 36.dp.toPx(),
+                    style = Stroke(width = 3.dp.toPx()),
+                    alpha = alphaAnim
+                )
+                drawCircle(
+                    brush = Brush.linearGradient(listOf(HotViolet, ElectricIndigo)),
+                    radius = 28.dp.toPx(),
+                    style = Stroke(width = 1.5.dp.toPx())
+                )
+                // Core pulse indicator
+                drawCircle(
+                    color = NeonCyan,
+                    radius = 8.dp.toPx() * alphaAnim
+                )
+            }
 
-            val brush = Brush.linearGradient(
-                colors = listOf(NeonCyan, ElectricIndigo, HotViolet)
+            Text(
+                text = "BRO SOUND LAB AI",
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 4.sp,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.testTag("splash_logo_text")
             )
 
-            // Draw concentric glowing ring
-            drawCircle(
-                brush = brush,
-                radius = 12.dp.toPx() * scale,
-                alpha = if (isPlaying) 0.15f * pulseAlpha else 0.08f,
-                style = Stroke(width = 2.dp.toPx())
-            )
-
-            // Draw the 3 lines representing spectrum wave
-            val spacing = 4.dp.toPx()
-            val barW = 3.dp.toPx()
-
-            // Bar 1 (Left) - short
-            val h1 = height * 0.4f * (if (isPlaying) scale else 1.0f)
-            drawRoundRect(
-                brush = brush,
-                topLeft = Offset(width / 2 - barW / 2 - spacing, height / 2 - h1 / 2),
-                size = Size(barW, h1),
-                cornerRadius = CornerRadius(2f, 2f)
-            )
-            // Bar 2 (Middle) - tall
-            val h2 = height * 0.8f * (if (isPlaying) 1.1f * scale else 1.0f)
-            drawRoundRect(
-                brush = brush,
-                topLeft = Offset(width / 2 - barW / 2, height / 2 - h2 / 2),
-                size = Size(barW, h2),
-                cornerRadius = CornerRadius(2f, 2f)
-            )
-            // Bar 3 (Right) - medium
-            val h3 = height * 0.6f * (if (isPlaying) scale else 1.0f)
-            drawRoundRect(
-                brush = brush,
-                topLeft = Offset(width / 2 - barW / 2 + spacing, height / 2 - h3 / 2),
-                size = Size(barW, h3),
-                cornerRadius = CornerRadius(2f, 2f)
+            Text(
+                text = "SYNTHESIZER • MASTERING • COCREATOR",
+                color = NeonCyan.copy(alpha = 0.65f),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp,
+                fontFamily = FontFamily.Monospace
             )
         }
     }
 }
 
 @Composable
-fun StudioHeader(viewModel: SoundLabViewModel) {
-    val isSynthPlaying by viewModel.isSynthPlaying.collectAsState()
-    val activeProject by viewModel.selectedProject.collectAsState()
+fun SystemInitializationView(viewModel: SoundLabViewModel) {
+    var loadingPercent by remember { mutableStateOf(0) }
+    val stages = listOf(
+        "Allocating memory heap for 32-bit float audio engine...",
+        "Hooking native OpenSL ES output channels...",
+        "Spawning vector matrix core filter filters...",
+        "Interfacing local Room SQLite sessions archive...",
+        "Waking server-side Gemini 3.5 AI mastering neural advisor...",
+        "Initialization successful. Soundstage clear."
+    )
+    val activeStageIndex = (loadingPercent / 20).coerceIn(0, stages.size - 1)
 
-    Row(
+    LaunchedEffect(Unit) {
+        while (loadingPercent < 100) {
+            delay(120)
+            loadingPercent += (2..8).random()
+            if (loadingPercent > 100) loadingPercent = 100
+        }
+    }
+
+    Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .background(GlassCardBg, RoundedCornerShape(12.dp))
-            .border(
-                1.dp,
-                Brush.horizontalGradient(listOf(GlassBorder, GlassBorder.copy(0.12f))),
-                RoundedCornerShape(12.dp)
-            )
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.BottomStart
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            PulsingLogoBadge(isPlaying = isSynthPlaying)
-            Column {
+            Text(
+                text = "SYSTEM INITIALIZATION",
+                color = NeonCyan,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.5.sp,
+                fontFamily = FontFamily.Monospace
+            )
+
+            // Neon horizontal load bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.White.copy(0.08f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(loadingPercent / 100f)
+                        .clip(RoundedCornerShape(50))
+                        .background(Brush.horizontalGradient(listOf(NeonCyan, HotViolet)))
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
                 Text(
-                    text = "BRO SOUND LAB AI",
-                    color = NeonCyan,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.sp,
-                    fontFamily = FontFamily.Monospace
+                    text = "STATUS: ${stages[activeStageIndex]}",
+                    color = Color.White.copy(0.7f),
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
                 Text(
-                    text = activeProject?.title ?: "DASHBOARD SESSION ENGINE",
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = 12.sp,
+                    text = "$loadingPercent%",
+                    color = HotViolet,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.testTag("init_percent")
                 )
             }
         }
+    }
+}
 
-        // Live stats pill
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+@Composable
+fun PermissionCheckView(viewModel: SoundLabViewModel) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier
+                .widthIn(max = 420.dp)
+                .background(GlassCardBg, RoundedCornerShape(24.dp))
+                .border(1.dp, GlassBorder, RoundedCornerShape(24.dp))
+                .padding(24.dp)
         ) {
-            Column(horizontalAlignment = Alignment.End) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(ElectricIndigo.copy(0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("🎙️", fontSize = 28.sp)
+            }
+
+            Text(
+                text = "LATENCY PERMISSIONS",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp
+            )
+
+            Text(
+                text = "BRO Sound Lab requires direct microphone permissions to run the real-time Fourier transform scopes, sample vocal overlays, and feed live audio cues into the Gemini AI analysis engine.",
+                color = Color.White.copy(0.6f),
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = { viewModel.setStartupStage(StartupStage.ONBOARDING) },
+                colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("grant_permission_button")
+            ) {
+                Text("ALLOW AUDIO ACCESS", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 12.sp)
+            }
+
+            TextButton(
+                onClick = { viewModel.setStartupStage(StartupStage.ONBOARDING) }
+            ) {
+                Text("Skip for offline synth sandbox", color = Color.White.copy(0.4f), fontSize = 10.sp)
+            }
+        }
+    }
+}
+
+@Composable
+fun OnboardingScreenView(viewModel: SoundLabViewModel) {
+    var stepIndex by remember { mutableStateOf(0) }
+    val guidelines = listOf(
+        Triple("AI AUDIO ADVOCATION", "Unleash server-side Gemini 3.5 AI to analyze descriptions, auto-configure filters, and sculpt crisp master tracks.", "🤖"),
+        Triple("CONCURRENT VCO KEYS", "Interact directly with a quad voltage-controlled oscillator oscillator, generating pure real-time feedback sine waves.", "🎹"),
+        Triple("TACTILE CONTROLLERS", "Command continuous 10-band tactile equalizers and analog slider rigs to mold your complete high-fidelity soundstage.", "🎛️")
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+            modifier = Modifier
+                .widthIn(max = 440.dp)
+                .background(GlassCardBg, RoundedCornerShape(28.dp))
+                .border(2.dp, GlassBorder, RoundedCornerShape(28.dp))
+                .padding(24.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "ONBOARDING PRELIGHT",
+                    color = GoldenAmber,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+                Text(
+                    text = "${stepIndex + 1}/3",
+                    color = Color.White.copy(0.5f),
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.White.copy(0.04f))
+                    .border(1.dp, GlassBorder.copy(0.4f), RoundedCornerShape(20.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(guidelines[stepIndex].third, fontSize = 36.sp)
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = guidelines[stepIndex].first,
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = guidelines[stepIndex].second,
+                    color = Color.White.copy(0.6f),
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.height(58.dp)
+                )
+            }
+
+            // Slide indicator dots
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeat(3) { index ->
                     Box(
                         modifier = Modifier
                             .size(6.dp)
                             .clip(RoundedCornerShape(50))
-                            .background(if (isSynthPlaying) MintGreen else Color.Gray)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = if (isSynthPlaying) "LIVE OUTPUT" else "STANDBY",
-                        color = if (isSynthPlaying) MintGreen else Color.Gray,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
+                            .background(if (index == stepIndex) NeonCyan else Color.White.copy(0.15f))
                     )
                 }
-                Text(
-                    text = "21.0 kHz Stereo • 32b FP",
-                    color = Color.White.copy(alpha = 0.5f),
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace
-                )
             }
 
-            // Power button with dynamic glow
-            IconButton(
-                onClick = { viewModel.toggleSynthesizer() },
+            Button(
+                onClick = {
+                    if (stepIndex < 2) {
+                        stepIndex++
+                    } else {
+                        viewModel.setStartupStage(StartupStage.MAIN_DASHBOARD)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(if (isSynthPlaying) HotViolet.copy(alpha = 0.25f) else Color.White.copy(0.08f))
-                    .border(1.dp, if (isSynthPlaying) HotViolet else Color.Transparent, RoundedCornerShape(50))
-                    .testTag("power_button")
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("onboarding_next_button")
             ) {
                 Text(
-                    text = if (isSynthPlaying) "STOP" else "PLAY",
-                    color = if (isSynthPlaying) HotViolet else Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
+                    text = if (stepIndex < 2) "CONTINUE PROTOCOL" else "INITIALIZE WORKSPACE",
+                    color = Color.White,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 11.sp
                 )
             }
         }
     }
 }
 
-@Composable
-fun LiveVisualizerRack(viewModel: SoundLabViewModel) {
-    val spectrum by viewModel.audioEngine.spectrumFlow.collectAsState()
-    val activeMidiNote = viewModel.audioEngine.activeMidiNote
-    val isSynthPlaying by viewModel.isSynthPlaying.collectAsState()
-    val vuLeft by viewModel.audioEngine.vuLeftFlow.collectAsState()
-    val vuRight by viewModel.audioEngine.vuRightFlow.collectAsState()
+// ==========================================
+// 2. MAIN APPLICATION WORKSPACE LAYOUT
+// ==========================================
 
-    val peakHoldValues = remember { FloatArray(10) { 0.1f } }
+@Composable
+fun MainDAWInterface(viewModel: SoundLabViewModel) {
+    val configuration = LocalConfiguration.current
+    val isTablet = configuration.screenWidthDp >= 720 || configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val currentTab by viewModel.currentTab.collectAsState()
+    val isCreateModalOpen by viewModel.isCreateModalOpen.collectAsState()
+    val isSideDrawerOpen by viewModel.isSideDrawerOpen.collectAsState()
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            // Adaptive Side Navigation Rail (Tablet/Landscape Only)
+            if (isTablet) {
+                AdaptiveNavRail(viewModel)
+            }
+
+            // Main Content Area
+            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                // Persistent Top Header (Menu, Search, Alerts)
+                MainTopHeader(viewModel)
+
+                // Navigation Area Switcher
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    when (currentTab) {
+                        "HOME" -> HomeScreenView(viewModel)
+                        "PROJECTS" -> ProjectsScreenView(viewModel)
+                        "TOOLS" -> ToolsScreenView(viewModel)
+                        "PROFILE" -> ProfileScreenView(viewModel)
+                    }
+                }
+
+                // Persistent Web-like Mini Music Player Overlay (Always Visible)
+                PersistentMiniPlayer(viewModel)
+
+                // Phone-specific Bottom Navigation Bar (Hidden on expand or Tablet rail)
+                if (!isTablet) {
+                    PhoneNavigationBar(viewModel)
+                }
+            }
+        }
+
+        // Custom Glassmorphic Drawer Overlay (Animates Left to Right)
+        AnimatedVisibility(
+            visible = isSideDrawerOpen,
+            enter = slideInHorizontally(animationSpec = tween(280)),
+            exit = slideOutHorizontally(animationSpec = tween(240))
+        ) {
+            CustomSideDrawerOverlay(viewModel)
+        }
+
+        // Full Screen Create Menu Modal
+        AnimatedVisibility(
+            visible = isCreateModalOpen,
+            enter = fadeIn(tween(250)) + scaleIn(tween(250)),
+            exit = fadeOut(tween(200)) + scaleOut(tween(200))
+        ) {
+            FullScreenCreateModal(viewModel)
+        }
+    }
+}
+
+// ==========================================
+// 3. MAIN TOP HEADER
+// ==========================================
+
+@Composable
+fun MainTopHeader(viewModel: SoundLabViewModel) {
+    var globalSearchOpen by remember { mutableStateOf(false) }
+    var searchText by remember { mutableStateOf("") }
+    val currentTab by viewModel.currentTab.collectAsState()
+    val notifications by viewModel.notifications.collectAsState()
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(SpaceObsidian.copy(0.9f))
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Interactive Hamburger menu opens Side Drawer
+                IconButton(
+                    onClick = { viewModel.setSideDrawerOpen(true) },
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(Color.White.copy(0.04f), RoundedCornerShape(50))
+                        .border(1.dp, GlassBorder.copy(0.4f), RoundedCornerShape(50))
+                        .testTag("hamburger_menu_button")
+                ) {
+                    Text("☰", color = NeonCyan, fontSize = 16.sp)
+                }
+
+                Column {
+                    Text(
+                        text = "BRO SOUND LAB AI",
+                        color = NeonCyan,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "DAW CONSOLE CORE // $currentTab",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+
+            // Quick Operations Row
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Real-time notification log toggle
+                var showPromoAlerts by remember { mutableStateOf(false) }
+                IconButton(
+                    onClick = { showPromoAlerts = !showPromoAlerts },
+                    modifier = Modifier.size(40.dp).background(Color.White.copy(0.03f), RoundedCornerShape(50))
+                ) {
+                    BadgedBox(
+                        badge = {
+                            if (notifications.isNotEmpty()) {
+                                Badge(containerColor = HotViolet) {
+                                    Text(notifications.size.toString(), color = Color.White, fontSize = 8.sp)
+                                }
+                            }
+                        }
+                    ) {
+                        Text("🔔", fontSize = 16.sp)
+                    }
+                }
+
+                // Global Interactive Search trigger
+                IconButton(
+                    onClick = { globalSearchOpen = true },
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(GlassCardBg, RoundedCornerShape(50))
+                        .border(1.dp, NeonCyan.copy(0.3f), RoundedCornerShape(50))
+                        .testTag("global_search_icon_button")
+                ) {
+                    Text("🔍", color = Color.White, fontSize = 16.sp)
+                }
+
+                // Notification quick-dropdown panel
+                DropdownMenu(
+                    expanded = showPromoAlerts,
+                    onDismissRequest = { showPromoAlerts = false },
+                    modifier = Modifier
+                        .background(Color(0xFF0F121F))
+                        .border(1.dp, GlassBorder, RoundedCornerShape(8.dp))
+                        .width(260.dp)
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("SYSTEM LOGS", color = NeonCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                Text("CLEAR", color = HotViolet, fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { viewModel.clearNotifications() })
+                            }
+                        },
+                        onClick = {}
+                    )
+                    Divider(color = Color.White.copy(0.08f))
+                    if (notifications.isEmpty()) {
+                        DropdownMenuItem(
+                            text = { Text("No logs reported. Core silent.", color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp) },
+                            onClick = {}
+                        )
+                    } else {
+                        notifications.take(5).forEach { message ->
+                            DropdownMenuItem(
+                                text = {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Box(modifier = Modifier.size(5.dp).clip(RoundedCornerShape(50)).background(MintGreen).align(Alignment.CenterVertically))
+                                        Text(message, color = Color.White, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                },
+                                onClick = {}
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Global Search overlay Dialog
+        if (globalSearchOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xE604060B))
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(GlassCardBg, RoundedCornerShape(12.dp))
+                        .border(1.dp, NeonCyan, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🔍", fontSize = 14.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedTextField(
+                        value = searchText,
+                        onValueChange = {
+                            searchText = it
+                            viewModel.setSearchQuery(it)
+                        },
+                        placeholder = { Text("Search projects, presets, effects, plugins...", color = Color.Gray, fontSize = 11.sp) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        modifier = Modifier.weight(1f).testTag("global_search_box_input"),
+                        textStyle = LocalTextStyle.current.copy(fontSize = 11.sp)
+                    )
+                    if (searchText.isNotEmpty()) {
+                        IconButton(onClick = {
+                            searchText = ""
+                            viewModel.setSearchQuery("")
+                        }) {
+                            Text("❌", fontSize = 10.sp)
+                        }
+                    }
+                    Button(
+                        onClick = { globalSearchOpen = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricIndigo),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text("CLOSE", color = Color.White, fontSize = 9.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// 4. PHONE BOTTOM NAVIGATION
+// ==========================================
+
+@Composable
+fun PhoneNavigationBar(viewModel: SoundLabViewModel) {
+    val currentTab by viewModel.currentTab.collectAsState()
+    val isProjGridView by viewModel.isProjectGridView.collectAsState()
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .height(112.dp)
-            .background(Color(0xFF080A12), RoundedCornerShape(12.dp))
-            .border(
-                1.dp,
-                Brush.verticalGradient(listOf(GlassBorder.copy(alpha = 0.3f), Color.Transparent)),
-                RoundedCornerShape(12.dp)
-            )
-            .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .background(Color(0xFF070912))
+            .navigationBarsPadding()
+            .border(1.dp, Brush.verticalGradient(listOf(GlassBorder.copy(alpha = 0.3f), Color.Transparent)), RoundedCornerShape(0.dp))
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceAround,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // A. Curved liquid FFT Spectrum with floating peak hold LED dots
-        Column(
-            modifier = Modifier
-                .weight(1.1f)
-                .fillMaxHeight()
-        ) {
-            Text(
-                text = "SPECTRAL FFT",
-                color = NeonCyan.copy(0.6f),
-                fontSize = 8.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-            SmoothFftAnalyzer(
-                spectrum = spectrum,
-                peakHoldValues = peakHoldValues,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .testTag("fft_spectrum_canvas")
-            )
-        }
-
-        // B. Retro green/cyan analog Cathode Oscilloscope
-        Column(
-            modifier = Modifier
-                .weight(0.9f)
-                .fillMaxHeight()
-        ) {
-            Text(
-                text = "CATHODE WAV",
-                color = HotViolet.copy(0.6f),
-                fontSize = 8.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-            LiveOscilloscope(
-                isSynthPlaying = isSynthPlaying,
-                activeMidiNote = activeMidiNote,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-
-        // C. True Dual Stereo VU meters (Segmented physical LEDs)
-        Column(
-            modifier = Modifier
-                .width(52.dp)
-                .fillMaxHeight(),
-            verticalArrangement = Arrangement.SpaceEvenly
-        ) {
-            VuGaugesSegment("L", vuLeft)
-            VuGaugesSegment("R", vuRight)
-        }
-    }
-}
-
-@Composable
-fun SmoothFftAnalyzer(
-    spectrum: FloatArray,
-    peakHoldValues: FloatArray,
-    decayRate: Float = 0.008f,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val width = size.width
-        val height = size.height
-        val totalBands = spectrum.size
-        val path = Path()
-        val dx = width / (totalBands - 1)
-
-        // Interpolate points smoothly
-        for (i in 0 until totalBands) {
-            val magnitude = spectrum[i].coerceIn(0.02f, 1.0f)
-            val hVal = height * magnitude
-            val x = i * dx
-            val y = height - hVal
-
-            if (i == 0) {
-                path.moveTo(x, y)
-            } else {
-                val prevX = (i - 1) * dx
-                val prevMag = spectrum[i - 1].coerceIn(0.02f, 1.0f)
-                val prevY = height - (height * prevMag)
-
-                path.cubicTo(
-                    prevX + dx / 2f, prevY,
-                    x - dx / 2f, y,
-                    x, y
-                )
-            }
-        }
-
-        // Liquid color filling
-        val fillPath = Path().apply {
-            addPath(path)
-            lineTo(width, height)
-            lineTo(0f, height)
-            close()
-        }
-
-        drawPath(
-            path = fillPath,
-            brush = Brush.verticalGradient(
-                colors = listOf(HotViolet.copy(0.25f), NeonCyan.copy(0.12f), Color.Transparent),
-                startY = 0f,
-                endY = height
-            )
+        val navItems = listOf(
+            Triple("HOME", "🏠", "Home"),
+            Triple("PROJECTS", "📂", "Projects"),
+            Triple("CREATE", "➕", "Create"),
+            Triple("TOOLS", "🎛️", "Tools"),
+            Triple("PROFILE", "👤", "Profile")
         )
 
-        // Glowing wave line
-        drawPath(
-            path = path,
-            brush = Brush.horizontalGradient(
-                colors = listOf(NeonCyan, ElectricIndigo, HotViolet)
-            ),
-            style = Stroke(width = 2.dp.toPx())
-        )
+        navItems.forEach { (tabId, unicode, label) ->
+            val isSelected = currentTab == tabId
 
-        // Draw hardware LED Peak Hold caps
-        for (i in 0 until totalBands) {
-            val currentVal = spectrum[i]
-            var peak = peakHoldValues[i]
-            if (currentVal > peak) {
-                peak = currentVal
+            if (tabId == "CREATE") {
+                // Interactive middle modal launcher
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Brush.linearGradient(listOf(NeonCyan, ElectricIndigo)))
+                        .clickable { viewModel.setCreateModalOpen(true) }
+                        .testTag("tab_button_CREATE"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = unicode, fontSize = 24.sp)
+                }
             } else {
-                peak = (peak - decayRate).coerceAtLeast(0.02f)
-            }
-            peakHoldValues[i] = peak
-
-            val capW = 12f
-            val capX = (i * dx) - (capW / 2f)
-            val capY = height - (height * peak) - 4f
-
-            if (capY >= 0 && capY < height) {
-                drawRoundRect(
-                    color = when {
-                        peak > 0.85f -> Color.Red
-                        peak > 0.6f -> GoldenAmber
-                        else -> NeonCyan
+                IconButton(
+                    onClick = {
+                        viewModel.setCurrentTab(tabId)
+                        viewModel.setSelectedToolId(null)
                     },
-                    topLeft = Offset(capX.coerceIn(0f, width - capW), capY),
-                    size = Size(capW, 2.dp.toPx()),
-                    cornerRadius = CornerRadius(1.5f, 1.5f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("tab_button_$tabId")
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = unicode,
+                            fontSize = 16.sp,
+                            color = if (isSelected) NeonCyan else Color.White.copy(0.4f)
+                        )
+                        Text(
+                            text = label,
+                            color = if (isSelected) NeonCyan else Color.White.copy(0.4f),
+                            fontSize = 9.sp,
+                            fontWeight = if (isSelected) FontWeight.Black else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// 5. ADAPTIVE TABLET NAVIGATION RAIL
+// ==========================================
+
+@Composable
+fun AdaptiveNavRail(viewModel: SoundLabViewModel) {
+    val currentTab by viewModel.currentTab.collectAsState()
+
+    Column(
+        modifier = Modifier
+            .width(84.dp)
+            .fillMaxHeight()
+            .background(Color(0xFF070912))
+            .border(1.dp, Brush.horizontalGradient(listOf(GlassBorder.copy(alpha = 0.2f), Color.Transparent)), RoundedCornerShape(0.dp))
+            .padding(vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(24.dp)
+    ) {
+        // Upper pulsing badge
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(GlassCardBg)
+                .border(1.dp, NeonCyan, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("🎚️", fontSize = 18.sp)
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        val navItems = listOf(
+            Triple("HOME", "🏠", "Home"),
+            Triple("PROJECTS", "📂", "Projects"),
+            Triple("CREATE", "➕", "Create"),
+            Triple("TOOLS", "🎛️", "Tools"),
+            Triple("PROFILE", "👤", "Profile")
+        )
+
+        navItems.forEach { (tabId, unicode, label) ->
+            val isSelected = currentTab == tabId
+
+            if (tabId == "CREATE") {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Brush.linearGradient(listOf(NeonCyan, HotViolet)))
+                        .clickable { viewModel.setCreateModalOpen(true) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = unicode, fontSize = 20.sp)
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            viewModel.setCurrentTab(tabId)
+                            viewModel.setSelectedToolId(null)
+                        }
+                        .padding(vertical = 8.dp)
+                        .testTag("tablet_nav_button_$tabId"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = unicode,
+                            fontSize = 20.sp,
+                            color = if (isSelected) NeonCyan else Color.White.copy(0.4f)
+                        )
+                        Text(
+                            text = label,
+                            color = if (isSelected) NeonCyan else Color.White.copy(0.4f),
+                            fontSize = 9.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// 6. CUSTOM INTUITIVE SIDE DRAWER OVERLAY
+// ==========================================
+
+@Composable
+fun CustomSideDrawerOverlay(viewModel: SoundLabViewModel) {
+    val drawerItems = listOf(
+        Pair("☁️ Cloud Presets Storage", "Online synchronization node"),
+        Pair("🛒 Sound FX Marketplace", "Import premium audio packets"),
+        Pair("🔌 Plugin Expansion Store", "Synthesizers and limiters"),
+        Pair("🎓 Sound Lab Academy", "Dynamic filter tutorials"),
+        Pair("📺 Interactive Tutorials", "2-tap flow guides"),
+        Pair("🤝 Community Portals", "Direct Discord collaborations"),
+        Pair("🗺️ 2026 Innovation Roadmap", "Picture-in-picture roadmap"),
+        Pair("📋 Changelog v1.50 Build", "Latency benchmark indices"),
+        Pair("🧪 Beta Innovation Labs", "Warp soundstage nodes")
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(0.7f))
+            .clickable { viewModel.setSideDrawerOpen(false) }
+    ) {
+        Column(
+            modifier = Modifier
+                .width(280.dp)
+                .fillMaxHeight()
+                .background(Color(0xFF080B15))
+                .border(1.dp, GlassBorder, RoundedCornerShape(0.dp))
+                .clickable(enabled = false) {}
+                .padding(16.dp)
+                .statusBarsPadding()
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "HIDDEN NAVIGATION",
+                    color = NeonCyan,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+                IconButton(onClick = { viewModel.setSideDrawerOpen(false) }, modifier = Modifier.testTag("close_drawer_button")) {
+                    Text("❌", color = Color.White, fontSize = 10.sp)
+                }
+            }
+
+            Divider(color = Color.White.copy(0.08f), modifier = Modifier.padding(bottom = 12.dp))
+
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(drawerItems) { (title, subtitle) ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White.copy(0.02f), RoundedCornerShape(8.dp))
+                            .border(1.dp, GlassBorder.copy(0.2f), RoundedCornerShape(8.dp))
+                            .clickable {
+                                viewModel.addNotification("Opened '$title' portal node")
+                                viewModel.setSideDrawerOpen(false)
+                            }
+                            .padding(12.dp)
+                    ) {
+                        Text(title, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(subtitle, color = Color.White.copy(0.5f), fontSize = 8.5.sp)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Divider(color = Color.White.copy(0.08f))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "BRO SOUND LAB AI v1.40\nAchmad Tohirin Custom System Frame",
+                color = Color.White.copy(0.3f),
+                fontSize = 8.sp,
+                lineHeight = 11.sp,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+}
+
+// ==========================================
+// 7. FULL-SCREEN CREATE MENUS MODAL (11 Actions)
+// ==========================================
+
+@Composable
+fun FullScreenCreateModal(viewModel: SoundLabViewModel) {
+    val itemsList = listOf(
+        Triple("🎙️ New Recording", "Allocates linear device buffer core channel", "RECORDER"),
+        Triple("📁 Import Audio Track", "Synchronizes external sample wav arrays", "IMPORT"),
+        Triple("🤖 New AI Project", "Query Gemini models directly for project tracks", "AI"),
+        Triple("📻 New Podcast Mix", "Pre-adjust limiter ratios for speech streams", "PODCAST"),
+        Triple("🎤 New Karaoke Split", "Execute vocal isolation algorithms", "KARAOKE"),
+        Triple("🎛️ DSP Mastering Desk", "Direct to interactive sliders architecture", "MASTERING"),
+        Triple("📊 Audio Fourier Scope", "Opens FFT and Oscilloscope desk and nodes", "ANALYSIS"),
+        Triple("🎶 Synthesize Music AI", "Generates full instrument layers", "MUSIC"),
+        Triple("📝 Build Song Lyrics AI", "Interact with Lyricist network assistant", "LYRICS"),
+        Triple("🥁 Generate Beats AI", "Spawn random grid rhythm maps", "BEAT"),
+        Triple("📄 Create Empty Session", "Starts fresh baseline stereo grid", "EMPTY")
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xF204060B))
+            .padding(16.dp)
+            .statusBarsPadding()
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "CREATE MENU MATRIX",
+                        color = NeonCyan,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.5.sp
+                    )
+                    Text(
+                        text = "Choose a specialized audio session template below",
+                        color = Color.White.copy(0.5f),
+                        fontSize = 10.sp
+                    )
+                }
+
+                IconButton(
+                    onClick = { viewModel.setCreateModalOpen(false) },
+                    modifier = Modifier
+                        .background(Color.White.copy(0.08f), RoundedCornerShape(50))
+                        .testTag("close_create_modal_button")
+                ) {
+                    Text("❌", color = Color.White, fontSize = 12.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            LazyColumn(
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(itemsList) { (title, desc, code) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(GlassCardBg, RoundedCornerShape(16.dp))
+                            .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
+                            .clickable {
+                                viewModel.setCreateModalOpen(false)
+                                when (code) {
+                                    "RECORDER" -> viewModel.startRecording()
+                                    "MASTERING" -> {
+                                        viewModel.setCurrentTab("TOOLS")
+                                        viewModel.setSelectedToolId("MIXER")
+                                    }
+                                    "ANALYSIS" -> {
+                                        viewModel.setCurrentTab("TOOLS")
+                                        viewModel.setSelectedToolId("ANALYZER")
+                                    }
+                                    "LYRICS" -> {
+                                        viewModel.setCurrentTab("TOOLS")
+                                        viewModel.setSelectedToolId("AI_COCREATOR")
+                                    }
+                                    "EMPTY" -> viewModel.createNewProject("Untitled Studio Session")
+                                    else -> {
+                                        viewModel.createNewProject("AI $code Project")
+                                        viewModel.addNotification("Successfully spawned system workflow $code")
+                                    }
+                                }
+                            }
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(desc, color = Color.White.copy(0.5f), fontSize = 9.sp)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(Color.White.copy(0.05f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("▶", color = NeonCyan, fontSize = 10.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// 8. TAB AREA 1: HOME DASHBOARD
+// ==========================================
+
+@Composable
+fun HomeScreenView(viewModel: SoundLabViewModel) {
+    val activeProject by viewModel.selectedProject.collectAsState()
+    val allProjects by viewModel.allProjects.collectAsState()
+    val allPresets by viewModel.allPresets.collectAsState()
+    val timeString = SimpleDateFormat("HH:mm:ss 'UTC'", Locale.getDefault()).format(Date(1781513332567L)) // UTC timestamp
+    val hour = 2 // Simulated early morning Hour
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
+    ) {
+        // A. Interactive Greeting Header
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(GlassCardBg, RoundedCornerShape(16.dp))
+                    .border(1.dp, GlassBorder.copy(0.5f), RoundedCornerShape(16.dp))
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "GOOD MORNING, CREATOR",
+                        color = HotViolet,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text = "Achmad Tohirin",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Thin
+                    )
+                    Text(
+                        text = "System time check: $timeString",
+                        color = Color.White.copy(0.4f),
+                        fontSize = 8.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Brush.radialGradient(listOf(NeonCyan.copy(0.2f), Color.Transparent))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("👨‍🎤", fontSize = 20.sp)
+                }
+            }
+        }
+
+        // B. Active Current Session Card (Preserve Editor Link)
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.linearGradient(listOf(Color(0xFF0F1223), Color(0xFF0A0C16))),
+                        RoundedCornerShape(16.dp)
+                    )
+                    .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "PREVALENT COCREATOR SESSION",
+                        color = GoldenAmber,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Box(modifier = Modifier.background(MintGreen.copy(0.15f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) {
+                        Text("ACTIVE CORE", color = MintGreen, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    }
+                }
+
+                Text(
+                    text = activeProject?.title ?: "DASHBOARD SANDBOX MASTER",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Text(
+                    text = "BPM Tracker: ${activeProject?.bpm ?: 120} | Custom Key Signature: ${activeProject?.keySignature ?: "C Major"}\nAssociated preset parameters: ${if (activeProject?.selectedPresetId ?: 0 > 0) "Custom Node Asset" else "Baseline Factory Analog"}",
+                    color = Color.White.copy(0.6f),
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp
+                )
+
+                Button(
+                    onClick = {
+                        viewModel.setCurrentTab("TOOLS")
+                        viewModel.setSelectedToolId("MIXER") // Direct edit route!
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("continue_editing_home_button")
+                ) {
+                    Text("CONTINUE EDITING IN STUDIO", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 10.sp)
+                }
+            }
+        }
+
+        // C. Preset Fast-Loader list
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "DYNAMIC ANALOG PRESETS",
+                    color = Color.White.copy(0.5f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(allPresets) { preset ->
+                        Column(
+                            modifier = Modifier
+                                .width(135.dp)
+                                .background(GlassCardBg, RoundedCornerShape(12.dp))
+                                .border(1.dp, GlassBorder.copy(0.4f), RoundedCornerShape(12.dp))
+                                .clickable {
+                                    viewModel.loadPresetToDsp(preset)
+                                    viewModel.addNotification("Loaded Preset: ${preset.name}")
+                                }
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(preset.name, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                            Text(
+                                text = "Overdrive: ${(preset.drive * 100).toInt()}%\nReverb: ${(preset.reverbDecay * 100).toInt()}%",
+                                color = NeonCyan,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // D. Sound Lab Quick Actions Grid
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "RAPID CONTROL PANELS",
+                    color = Color.White.copy(0.5f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+
+                val quickActions = listOf(
+                    Triple("🎛️ Equalizer Tuning", "EQ RACK", "EQUALIZER"),
+                    Triple("🎚️ Multi-band Mixer", "MIX RACK", "MIXER"),
+                    Triple("🎹 Live VCO Synth Keys", "VCO SAND", "SYNTH"),
+                    Triple("📊 FFT Waveform Scope", "ANALYSER", "ANALYZER"),
+                    Triple("🤖 AI Mastering Node", "GEMINI ENG", "AI_COCREATOR"),
+                    Triple("📂 Audio Sessions archive", "ROOM DB", "DB_PROJECTS")
+                )
+
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.height(130.dp)
+                ) {
+                    items(quickActions) { (label, sub, toolId) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(GlassCardBg, RoundedCornerShape(10.dp))
+                                .border(1.dp, GlassBorder.copy(0.3f), RoundedCornerShape(10.dp))
+                                .clickable {
+                                    viewModel.setCurrentTab("TOOLS")
+                                    viewModel.setSelectedToolId(toolId)
+                                }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Column {
+                                Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                Text(sub, color = HotViolet, fontSize = 7.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // E. AI Suggestions & Audio Tips
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White.copy(0.01f), RoundedCornerShape(12.dp))
+                    .border(1.dp, GlassBorder.copy(0.2f), RoundedCornerShape(12.dp))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "💡 SYSTEM INTELLIGENCE & DSP ADVICE",
+                    color = GoldenAmber,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "Did you know that saturating your high-end vocals (16k band) with low delay feedbacks creates high-contrast, airy digital spacing? Ask the Gemini mastering advisor tab for instant multi-band configurations customized to your track's vibe.",
+                    color = Color.White.copy(0.6f),
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp
+                )
+            }
+        }
+    }
+}
+
+// ==========================================
+// 9. TAB AREA 2: PROJECTS MANAGEMENT
+// ==========================================
+
+@Composable
+fun ProjectsScreenView(viewModel: SoundLabViewModel) {
+    val projects by viewModel.allProjects.collectAsState()
+    val activeProject by viewModel.selectedProject.collectAsState()
+    val isProjGridView by viewModel.isProjectGridView.collectAsState()
+    val activeCategory by viewModel.selectedProjectCategory.collectAsState()
+    val queryText by viewModel.searchQuery.collectAsState()
+
+    val categories = listOf("Recent", "Favorites", "Cloud", "Local", "Shared", "Archived", "Deleted")
+
+    // Filter projects based on query and category
+    val filteredProjects = projects.filter {
+        val matchesQuery = it.title.contains(queryText, ignoreCase = true) || it.lyrics.contains(queryText, ignoreCase = true)
+        val matchesCategory = when (activeCategory) {
+            "Recent" -> true
+            "Favorites" -> it.id % 2 == 0 // Mock favorite index for demo persistence
+            "Cloud" -> it.id % 3 == 0
+            "Local" -> !it.isRecordingSample
+            "Shared" -> false
+            "Archived" -> false
+            "Deleted" -> false
+            else -> true
+        }
+        matchesQuery && matchesCategory
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Search & Style Filter
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "STORED PROJECTS ARCHIVE (${filteredProjects.size})",
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = FontFamily.Monospace
+            )
+
+            // Grid / List Toggler UI Button
+            IconButton(
+                onClick = { viewModel.toggleProjectGridView() },
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(Color.White.copy(0.04f), RoundedCornerShape(50))
+                    .testTag("layout_toggle_button")
+            ) {
+                Text(if (isProjGridView) "☰" else "▦", color = NeonCyan, fontSize = 14.sp)
+            }
+        }
+
+        // Horizontal Category Tab selection
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(categories) { cat ->
+                val isSel = cat == activeCategory
+                Box(
+                    modifier = Modifier
+                        .background(
+                            if (isSel) ElectricIndigo.copy(0.4f) else Color.White.copy(0.03f),
+                            RoundedCornerShape(50)
+                        )
+                        .border(
+                            1.dp,
+                            if (isSel) NeonCyan else Color.Transparent,
+                            RoundedCornerShape(50)
+                        )
+                        .clickable { viewModel.setProjectCategory(cat) }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .testTag("category_tab_$cat")
+                ) {
+                    Text(cat, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // Project Cards list or grid
+        if (filteredProjects.isEmpty()) {
+            Box(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("📂", fontSize = 36.sp)
+                    Text("No records match the category parameters", color = Color.White.copy(0.4f), fontSize = 11.sp)
+                }
+            }
+        } else {
+            if (isProjGridView) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f).padding(bottom = 120.dp)
+                ) {
+                    items(filteredProjects) { proj ->
+                        val isCurrent = proj.id == activeProject?.id
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (isCurrent) ElectricIndigo.copy(0.2f) else GlassCardBg,
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isCurrent) NeonCyan else GlassBorder.copy(0.4f),
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .clickable { viewModel.selectProject(proj) }
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(proj.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                            Text("BPM: ${proj.bpm} | Key: ${proj.keySignature}", color = NeonCyan, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(if (proj.isRecordingSample) "🎙️ RECS" else "🎹 DAW", color = Color.White.copy(0.4f), fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                                IconButton(onClick = { viewModel.deleteProject(proj.id) }, modifier = Modifier.size(20.dp)) {
+                                    Text("❌", fontSize = 7.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f).padding(bottom = 120.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filteredProjects) { proj ->
+                        val isCurrent = proj.id == activeProject?.id
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (isCurrent) ElectricIndigo.copy(0.2f) else GlassCardBg,
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isCurrent) NeonCyan else GlassBorder.copy(0.4f),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .clickable { viewModel.selectProject(proj) }
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(proj.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                                Text("BPM: ${proj.bpm} | Key Signature: ${proj.keySignature}", color = NeonCyan, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                            }
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(if (proj.isRecordingSample) "🎙️ Clip" else "🎹 Grid", color = Color.White.copy(0.4f), fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                                IconButton(onClick = { viewModel.deleteProject(proj.id) }, modifier = Modifier.size(24.dp).testTag("delete_proj_${proj.id}")) {
+                                    Text("❌", fontSize = 8.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// 10. TAB AREA 3: PROFESSIONAL TOOLS
+// ==========================================
+
+@Composable
+fun ToolsScreenView(viewModel: SoundLabViewModel) {
+    val selectedToolId by viewModel.selectedToolId.collectAsState()
+
+    if (selectedToolId != null) {
+        // Render detailed focused subscreen with a back button
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = { viewModel.setSelectedToolId(null) },
+                    modifier = Modifier.testTag("back_to_tools_grid_button")
+                ) {
+                    Text("← BACK TO TOOLS LIST", color = HotViolet, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            ) {
+                when (selectedToolId) {
+                    "EQUALIZER" -> TactileEqRack(viewModel)
+                    "MIXER" -> DspMasterRack(viewModel)
+                    "SYNTH" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(modifier = Modifier.weight(1f)) { LiveVisualizerRack(viewModel) }
+                        SynthesizerKeyboardController(viewModel)
+                    }
+                    "ANALYZER" -> Column {
+                        LiveVisualizerRack(viewModel)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(GlassCardBg, RoundedCornerShape(12.dp))
+                                .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
+                                .padding(12.dp)
+                        ) {
+                            Text(
+                                "Live cathode oscilloscope grids track precise floating-point VCO waveforms. Play visual keys below or toggle the master generator to inspect stereo phasing values.",
+                                color = Color.White.copy(0.6f),
+                                fontSize = 10.sp,
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+                    "AI_COCREATOR" -> AiStudioAssistantPanel(viewModel)
+                    "DB_PROJECTS" -> SessionArchivePanel(viewModel)
+                }
+            }
+        }
+    } else {
+        // Standard interactive tools explorer categories grid
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
+        ) {
+            // Category A: Audio Utilities
+            item {
+                ToolsCategorySection(
+                    title = "PROFESSIONAL AUDIO UTILITIES",
+                    items = listOf(
+                        Triple("Tactile EQ Desk", "Continuous 10-band parameters sliders", "EQUALIZER"),
+                        Triple("Multi-channel Mixer", "Synthesized Vocals vs Beat gains", "MIXER"),
+                        Triple("Digital VCO Synthesizer", "VCO live piano keys oscillator console", "SYNTH"),
+                        Triple("Fourier FFT Analyzer", "Spectrograph and dual CRT Oscilloscopes", "ANALYZER")
+                    ),
+                    viewModel = viewModel
+                )
+            }
+
+            // Category B: AI Sound Engineering
+            item {
+                ToolsCategorySection(
+                    title = "AI ASSISTANTS & GENERATORS",
+                    items = listOf(
+                        Triple("Gemini AI Masters Advisor", "Auto dynamic settings advisor matrix", "AI_COCREATOR"),
+                        Triple("Interactive Song Lyricist", "Vocal sheets and metrics chord builder", "AI_COCREATOR"),
+                        Triple("Sample Voice Vocals isolator", "Algorithmic divider split tracks", "AI_COCREATOR")
+                    ),
+                    viewModel = viewModel
+                )
+            }
+
+            // Category C: Utility Indexes
+            item {
+                ToolsCategorySection(
+                    title = "METRIC BENCHMARKS & UTILITIES",
+                    items = listOf(
+                        Triple("System Project Archive", "Local SQLite database list nodes", "DB_PROJECTS"),
+                        Triple("Plugins Mixer Extensions", "Add continuous latency buffers", "DB_PROJECTS")
+                    ),
+                    viewModel = viewModel
                 )
             }
         }
@@ -483,322 +1566,608 @@ fun SmoothFftAnalyzer(
 }
 
 @Composable
-fun LiveOscilloscope(
-    isSynthPlaying: Boolean,
-    activeMidiNote: Float,
-    modifier: Modifier = Modifier
+fun ToolsCategorySection(
+    title: String,
+    items: List<Triple<String, String, String>>,
+    viewModel: SoundLabViewModel
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "osci_phase")
-    val phaseOffset by infiniteTransition.animateFloat(
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = title,
+            color = NeonCyan,
+            fontSize = 9.5.sp,
+            fontWeight = FontWeight.Black,
+            fontFamily = FontFamily.Monospace,
+            letterSpacing = 1.sp
+        )
+
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.height(140.dp)
+        ) {
+            items(items) { (label, desc, toolId) ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(GlassCardBg, RoundedCornerShape(14.dp))
+                        .border(1.dp, GlassBorder.copy(0.4f), RoundedCornerShape(14.dp))
+                        .clickable { viewModel.setSelectedToolId(toolId) }
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(desc, color = Color.White.copy(0.5f), fontSize = 8.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// 11. TAB AREA 4: USER PROFILE SCREEN
+// ==========================================
+
+@Composable
+fun ProfileScreenView(viewModel: SoundLabViewModel) {
+    var devOptionToggle by remember { mutableStateOf(false) }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
+    ) {
+        // Standard User Header Card
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(GlassCardBg, RoundedCornerShape(20.dp))
+                    .border(2.dp, NeonCyan.copy(0.4f), RoundedCornerShape(20.dp))
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Achmad Tohirin", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                    Text("achmadtohirin123@gmail.com", color = Color.White.copy(0.5f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.background(HotViolet.copy(0.18f), RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                        Text("PRO SOUND LAB ACCORD v1.4", color = HotViolet, fontSize = 8.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+                    }
+                }
+
+                Text("🥇", fontSize = 32.sp)
+            }
+        }
+
+        // Horizontal billing / cloud charts
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(GlassCardBg, RoundedCornerShape(16.dp))
+                    .border(1.dp, GlassBorder.copy(0.5f), RoundedCornerShape(16.dp))
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Cloud Sync Backup", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("74.2 GB / 100 GB used", color = NeonCyan, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                }
+
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)).background(Color.White.copy(0.08f))
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxHeight().fillMaxWidth(0.74f).background(NeonCyan)
+                    )
+                }
+            }
+        }
+
+        // Appearance & Configuration Settings
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "HARDWARE & CONSOLES PREFERENCES",
+                    color = Color.White.copy(0.5f),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+
+                val prefs = listOf(
+                    Pair("Audio Output Interface", "ASIO Stereo Core (Low Latency)"),
+                    Pair("Buffer Block Size Engine", "256 samples (2.9ms feedback)"),
+                    Pair("Workspace Core Theme", "Cyber Deep Obsidian Glassmorphism"),
+                    Pair("Global Language Locale", "English International (US-UTC)")
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    prefs.forEach { (label, stateVal) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(GlassCardBg, RoundedCornerShape(10.dp))
+                                .border(1.dp, GlassBorder.copy(0.2f), RoundedCornerShape(10.dp))
+                                .clickable { viewModel.addNotification("Configured: $label") }
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(label, color = Color.White, fontSize = 11.sp)
+                            Text(stateVal, color = GoldenAmber, fontSize = 9.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Developer Settings Toggle View
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(GlassCardBg, RoundedCornerShape(16.dp))
+                    .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("ASIO Developer Core Options", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("Show analytical low-level latency measurements", color = Color.White.copy(0.4f), fontSize = 8.5.sp)
+                    }
+
+                    Switch(
+                        checked = devOptionToggle,
+                        onCheckedChange = { devOptionToggle = it },
+                        modifier = Modifier.testTag("dev_options_toggle")
+                    )
+                }
+
+                if (devOptionToggle) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Core Engine: 32-Bit Dual Float Pipeline", color = MintGreen, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        Text("Local SQLite Version: SQLite-3.41-Session", color = MintGreen, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        Text("Active REST Endpoint: api.gemini.ai-v1beta", color = MintGreen, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        Button(
+                            onClick = {
+                                viewModel.createNewProject("Prefilled Benchmark Project")
+                                viewModel.addNotification("Spawned system performance index stats")
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text("RUN INTERNALS BENCHMARK", color = Color.White, fontSize = 8.5.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// 12. FLOATING MINI AUDIO PLAYER & WAVE SYSTEM
+// ==========================================
+
+@Composable
+fun PersistentMiniPlayer(viewModel: SoundLabViewModel) {
+    val activeProject by viewModel.selectedProject.collectAsState()
+    val isPlaying by viewModel.miniPlayerPlaying.collectAsState()
+    val isExpanded by viewModel.miniPlayerExpanded.collectAsState()
+    val sliderPos by viewModel.miniPlayerPosition.collectAsState()
+    val volumeSetting by viewModel.miniPlayerVolume.collectAsState()
+
+    // Neon glowing waveform animation
+    val waveOffset = rememberInfiniteTransition(label = "wave")
+    val phaseState by waveOffset.animateFloat(
         initialValue = 0f,
-        targetValue = (2f * java.lang.Math.PI).toFloat(),
+        targetValue = 2f * PI.toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = LinearEasing),
+            animation = tween(1400, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "phase"
     )
 
-    Canvas(modifier = modifier) {
-        val width = size.width
-        val height = size.height
-        val centerY = height / 2
-
-        // 1. Draw cathode background grid
-        val gridColor = Color(0xFF00E5FF).copy(alpha = 0.06f)
-        val pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f)
-
-        for (i in 1..3) {
-            val y = height * (i / 4f)
-            drawLine(
-                color = gridColor,
-                start = Offset(0f, y),
-                end = Offset(width, y),
-                strokeWidth = 1.dp.toPx(),
-                pathEffect = pathEffect
-            )
-        }
-        for (i in 1..7) {
-            val x = width * (i / 8f)
-            drawLine(
-                color = gridColor,
-                start = Offset(x, 0f),
-                end = Offset(x, height),
-                strokeWidth = 1.dp.toPx(),
-                pathEffect = pathEffect
-            )
-        }
-
-        // Center line scans
-        drawLine(
-            color = Color(0xFF00E5FF).copy(0.12f),
-            start = Offset(0f, centerY),
-            end = Offset(width, centerY),
-            strokeWidth = 1.dp.toPx()
-        )
-        drawLine(
-            color = Color(0xFF00E5FF).copy(0.12f),
-            start = Offset(width / 2, 0f),
-            end = Offset(width / 2, height),
-            strokeWidth = 1.dp.toPx()
-        )
-
-        // 2. Compute wave trace path
-        val pointsCount = 60
-        val path = Path()
-        val dx = width / (pointsCount - 1)
-        val cycles = if (isSynthPlaying) {
-            if (activeMidiNote > 0f) (activeMidiNote / 120f).coerceIn(2.5f, 6.5f) else 3.5f
-        } else {
-            1.2f
-        }
-        val amplitude = if (isSynthPlaying) height * 0.35f else height * 0.05f
-
-        for (i in 0 until pointsCount) {
-            val x = i * dx
-            val normX = i.toFloat() / (pointsCount - 1)
-            val angle = (normX * 2f * PI.toFloat() * cycles) - phaseOffset
-
-            val s1 = sin(angle)
-            val harm = if (isSynthPlaying) 0.15f * sin(angle * 3f + phaseOffset) else 0f
-            val noise = (Math.random().toFloat() * 2f - 1f) * (if (isSynthPlaying) 0.02f else 0.005f)
-
-            val yOffset = amplitude * (s1 + harm + noise)
-            val y = centerY + yOffset
-
-            if (i == 0) {
-                path.moveTo(x, y)
-            } else {
-                path.lineTo(x, y)
-            }
-        }
-
-        // Double trace line for cathode glow effect
-        drawPath(
-            path = path,
-            color = NeonCyan.copy(0.2f),
-            style = Stroke(width = 4.dp.toPx())
-        )
-        drawPath(
-            path = path,
-            color = Color.White,
-            style = Stroke(width = 1.5.dp.toPx())
-        )
-    }
-}
-
-@Composable
-fun VuGaugesSegment(label: String, value: Float) {
-    Column {
-        Text(
-            text = label,
-            color = Color.White.copy(alpha = 0.5f),
-            fontSize = 8.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.padding(bottom = 2.dp)
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(1.dp)
-        ) {
-            val numSegments = 10
-            for (step in 0 until numSegments) {
-                val boundary = step.toFloat() / numSegments
-                val isActive = value >= boundary
-                val segmentColor = when {
-                    step >= 8 -> if (isActive) Color.Red else Color.Red.copy(0.12f)
-                    step >= 6 -> if (isActive) GoldenAmber else GoldenAmber.copy(0.12f)
-                    else -> if (isActive) MintGreen else MintGreen.copy(0.12f)
-                }
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(1.dp))
-                        .background(segmentColor)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun CompactWorkspaceDeck(viewModel: SoundLabViewModel) {
-    var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("MASTERING", "GRAPHIC EQ", "AI CHAT", "PROJECTS")
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        ScrollableTabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = Color.Transparent,
-            contentColor = NeonCyan,
-            edgePadding = 16.dp,
-            indicator = { tabPositions ->
-                if (selectedTab < tabPositions.size) {
-                    TabRowDefaults.SecondaryIndicator(
-                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                        color = NeonCyan
-                    )
-                }
-            },
-            modifier = Modifier.padding(bottom = 8.dp)
-        ) {
-            tabs.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    text = {
-                        Text(
-                            text = title,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        )
-                    }
-                )
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-        ) {
-            when (selectedTab) {
-                0 -> DspMasterRack(viewModel)
-                1 -> TactileEqRack(viewModel)
-                2 -> AiStudioAssistantPanel(viewModel)
-                3 -> SessionArchivePanel(viewModel)
-            }
-        }
-    }
-}
-
-@Composable
-fun WidescreenDesktopWorkspace(viewModel: SoundLabViewModel) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .height(310.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .weight(1.2f)
-                .fillMaxHeight()
-        ) {
-            TactileEqRack(viewModel)
-        }
-        Box(
-            modifier = Modifier
-                .weight(1.2f)
-                .fillMaxHeight()
-        ) {
-            DspMasterRack(viewModel)
-        }
-        Box(
-            modifier = Modifier
-                .weight(1.5f)
-                .fillMaxHeight()
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(modifier = Modifier.weight(1.4f)) {
-                    AiStudioAssistantPanel(viewModel)
-                }
-                Box(modifier = Modifier.weight(1f)) {
-                    SessionArchivePanel(viewModel)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun TactileEqRack(viewModel: SoundLabViewModel) {
-    val bands by viewModel.eqBandsState.collectAsState()
-    val bandLabels = listOf("31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k")
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(GlassCardBg, RoundedCornerShape(16.dp))
-            .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
-            .padding(16.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "10-BAND TACTILE EQUALIZER",
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Black
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .background(Color(0xFF0C0E18).copy(0.95f), RoundedCornerShape(16.dp))
+            .border(
+                1.dp,
+                Brush.horizontalGradient(listOf(NeonCyan, HotViolet)),
+                RoundedCornerShape(16.dp)
             )
-            Text(
-                text = "RESET ALL",
-                color = HotViolet,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clickable {
-                        for (i in 0 until 10) {
-                            viewModel.setEqBandLevel(i, 0.0f)
+            .padding(12.dp)
+    ) {
+        if (isExpanded) {
+            // Highly robust expanded player
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "EXPANDED MULTI-PIECE STUDIO SYSTEM",
+                        color = GoldenAmber,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    IconButton(onClick = { viewModel.setMiniPlayerExpanded(false) }) {
+                        Text("▼", color = Color.White, fontSize = 12.sp)
+                    }
+                }
+
+                // Rotating cassette/vinyl drawing
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Canvas(modifier = Modifier.size(64.dp)) {
+                        // cassette grid body
+                        drawRoundRect(
+                            color = GlassBorder.copy(0.5f),
+                            size = Size(64.dp.toPx(), 44.dp.toPx()),
+                            topLeft = Offset(0f, 10.dp.toPx()),
+                            cornerRadius = CornerRadius(6.dp.toPx())
+                        )
+                        // Spinning rolls
+                        val spinFreq = if (isPlaying) phaseState else 1f
+                        drawCircle(
+                            color = NeonCyan,
+                            radius = 8.dp.toPx(),
+                            center = Offset(20.dp.toPx(), 32.dp.toPx()),
+                            style = Stroke(width = 1.dp.toPx())
+                        )
+                        drawCircle(
+                            color = HotViolet,
+                            radius = 8.dp.toPx(),
+                            center = Offset(44.dp.toPx(), 32.dp.toPx()),
+                            style = Stroke(width = 1.dp.toPx())
+                        )
+                    }
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = activeProject?.title ?: "DASHBOARD STEREO FEED",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "BPM Indicator: ${activeProject?.bpm ?: 120} | Vocal sheet signature: ${activeProject?.keySignature ?: "C Major"}",
+                            color = Color.White.copy(0.5f),
+                            fontSize = 9.sp
+                        )
+                    }
+                }
+
+                // Continuous seek bar slider and volume mix
+                Slider(
+                    value = sliderPos,
+                    onValueChange = { viewModel.setMiniPlayerPosition(it) },
+                    colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan),
+                    modifier = Modifier.height(28.dp).testTag("miniplayer_seek_slider")
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("🔊", fontSize = 12.sp)
+                        Slider(
+                            value = volumeSetting,
+                            onValueChange = { viewModel.setMiniPlayerVolume(it) },
+                            colors = SliderDefaults.colors(thumbColor = HotViolet, activeTrackColor = HotViolet),
+                            modifier = Modifier.width(100.dp).height(24.dp)
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        IconButton(onClick = { viewModel.toggleMiniPlayerPlaying() }, modifier = Modifier.testTag("miniplayer_play_pause_exp")) {
+                            Text(if (isPlaying) "⏸" else "▶", color = NeonCyan, fontSize = 16.sp)
                         }
                     }
-                    .padding(4.dp)
-            )
-        }
+                }
+            }
+        } else {
+            // Standard compact bar mini player with bouncing waveform preview
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    // Small animated Canvas Waveform
+                    Canvas(modifier = Modifier.size(width = 60.dp, height = 24.dp).testTag("miniplayer_waveform_canvas")) {
+                        val strokeW = 1.5.dp.toPx()
+                        val cy = size.height / 2f
+                        val path = Path()
+                        val subdivisions = 20
+                        val stepW = size.width / subdivisions
+                        for (i in 0..subdivisions) {
+                            val px = i * stepW
+                            val angle = (i.toFloat() / subdivisions) * 3f * PI.toFloat() - phaseState
+                            val ampMultiplier = if (isPlaying) 10.dp.toPx() else 2.dp.toPx()
+                            val py = cy + sin(angle) * ampMultiplier
+                            if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+                        }
+                        drawPath(path, Brush.horizontalGradient(listOf(NeonCyan, HotViolet)), style = Stroke(strokeW))
+                    }
 
-        Spacer(modifier = Modifier.height(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = activeProject?.title ?: "BASELINE MONITORS SANDBOX",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = if (isPlaying) "STEREO FEED ACTIVE" else "MONITORS STANDBY",
+                            color = if (isPlaying) MintGreen else Color.Gray,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Tap trigger triggers synth
+                    IconButton(onClick = { viewModel.toggleMiniPlayerPlaying() }, modifier = Modifier.testTag("mini_player_play_button")) {
+                        Text(if (isPlaying) "⏸" else "▶", color = NeonCyan, fontSize = 12.sp)
+                    }
+                    IconButton(onClick = { viewModel.setMiniPlayerExpanded(true) }, modifier = Modifier.testTag("mini_player_expand_button")) {
+                        Text("▲", color = Color.White, fontSize = 10.sp)
+                    }
+                }
+            }
+        }
+    }
+
+    // Floating recording prompt modal dialog if active
+    val isRecordingActive by viewModel.isRecordingActive.collectAsState()
+    val isRecordingPaused by viewModel.isRecordingPaused.collectAsState()
+    val recordingSecs by viewModel.recordingSeconds.collectAsState()
+    val activeInput by viewModel.recordingInputDevice.collectAsState()
+
+    if (isRecordingActive) {
+        var recordingTitle by remember { mutableStateOf("") }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.82f))
+                .clickable { /* Block dismissions */ }
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 420.dp)
+                    .background(Color(0xFF0A0C16), RoundedCornerShape(20.dp))
+                    .border(2.dp, HotViolet, RoundedCornerShape(20.dp))
+                    .padding(20.dp)
+            ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("LIVE RECORDING MONITOR", color = HotViolet, fontSize = 10.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+                    Box(modifier = Modifier.background(Color.Red.copy(0.18f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) {
+                        Text("REC", color = Color.Red, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    }
+                }
+
+                // Clock timer
+                val mins = recordingSecs / 60
+                val secs = recordingSecs % 60
+                Text(
+                    text = String.format("%02d:%02d", mins, secs),
+                    color = Color.White,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.testTag("recording_timer_clock")
+                )
+
+                Text(
+                    text = "Source: $activeInput",
+                    color = Color.White.copy(0.5f),
+                    fontSize = 10.sp
+                )
+
+                OutlinedTextField(
+                    value = recordingTitle,
+                    onValueChange = { recordingTitle = it },
+                    placeholder = { Text("E.g., Guitar Loop #1", color = Color.Gray, fontSize = 11.sp) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NeonCyan,
+                        unfocusedBorderColor = GlassBorder,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    modifier = Modifier.fillMaxWidth().testTag("recording_title_input"),
+                    textStyle = LocalTextStyle.current.copy(fontSize = 11.sp)
+                )
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = { viewModel.pauseToggleRecording() },
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricIndigo),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(if (isRecordingPaused) "RESUME" else "PAUSE", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = { viewModel.stopAndSaveRecording(recordingTitle) },
+                        colors = ButtonDefaults.buttonColors(containerColor = MintGreen),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1.2f).testTag("stop_recording_save_button")
+                    ) {
+                        Text("STOP & SAVE", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+
+                TextButton(onClick = { viewModel.discardRecording() }) {
+                    Text("Discard and close channel", color = Color.White.copy(0.35f), fontSize = 10.sp)
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// 13. PROFESSIONAL ANALOG AUDIO CONTROLLER COMPOSABLES
+// ==========================================
+
+@Composable
+fun TactileEqRack(viewModel: SoundLabViewModel) {
+    val eqBands by viewModel.eqBandsState.collectAsState()
+    var presetNameText by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(GlassCardBg, RoundedCornerShape(16.dp))
+            .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "TACTILE 10-BAND GRAPHIC EQUALIZER",
+            color = NeonCyan,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black,
+            fontFamily = FontFamily.Monospace,
+            letterSpacing = 1.5.sp
+        )
 
         Row(
             modifier = Modifier
+                .weight(1f)
                 .fillMaxWidth()
-                .weight(1f),
-            horizontalArrangement = Arrangement.SpaceBetween
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            bands.forEachIndexed { index, gain ->
+            val freqLabels = listOf("31Hz", "62Hz", "125Hz", "250Hz", "500Hz", "1kHz", "2kHz", "4kHz", "8kHz", "16kHz")
+            for (i in 0 until 10) {
+                val dbVal = eqBands.getOrElse(i) { 0.0f }
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .fillMaxHeight()
-                        .weight(1f)
+                        .width(46.dp)
+                        .background(Color.White.copy(0.01f), RoundedCornerShape(8.dp))
+                        .padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = String.format("%s%.1f", if (gain > 0) "+" else "", gain),
-                        color = if (gain != 0f) NeonCyan else Color.White.copy(0.4f),
-                        fontSize = 8.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        text = String.format("%+1.1f", dbVal),
+                        color = if (dbVal != 0.0f) HotViolet else Color.Gray,
+                        fontSize = 8.5.sp,
                         fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.testTag("eq_value_$index")
-                    )
-
-                    Slider(
-                        value = gain,
-                        onValueChange = { viewModel.setEqBandLevel(index, it) },
-                        valueRange = -12.0f..12.0f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = NeonCyan,
-                            activeTrackColor = NeonCyan,
-                            inactiveTrackColor = Color.White.copy(0.08f)
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("eq_slider_$index")
-                    )
-
-                    Text(
-                        text = bandLabels[index],
-                        color = Color.White.copy(0.7f),
-                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold
                     )
+
+                    // Vertical Slider Track
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .width(18.dp)
+                            .padding(vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Slider(
+                            value = dbVal,
+                            onValueChange = { viewModel.setEqBandLevel(i, it) },
+                            valueRange = -12.0f..12.0f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = NeonCyan,
+                                activeTrackColor = NeonCyan,
+                                inactiveTrackColor = Color.White.copy(0.08f)
+                            ),
+                            // Rotates standard slider vertically
+                            modifier = Modifier
+                                .graphicsLayer(
+                                    rotationZ = -90f,
+                                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin.Center
+                                )
+                                .width(120.dp)
+                        )
+                    }
+
+                    Text(
+                        text = freqLabels[i],
+                        color = Color.White.copy(0.7f),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
                 }
+            }
+        }
+
+        Divider(color = Color.White.copy(0.08f))
+
+        // Preset Saving Core Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = presetNameText,
+                onValueChange = { presetNameText = it },
+                placeholder = { Text("E.g., Ultra Vocal Polish", color = Color.Gray, fontSize = 11.sp) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = NeonCyan,
+                    unfocusedBorderColor = GlassBorder,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp)
+                    .testTag("save_preset_input_name"),
+                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp)
+            )
+
+            Button(
+                onClick = {
+                    if (presetNameText.isNotBlank()) {
+                        viewModel.savePreset(presetNameText)
+                        viewModel.addNotification("Saved Preset node '$presetNameText' to Room DB")
+                        presetNameText = ""
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .height(44.dp)
+                    .testTag("save_preset_submit_button")
+            ) {
+                Text("SAVE DYNAMIC PRESET", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
             }
         }
     }
@@ -814,88 +2183,157 @@ fun DspMasterRack(viewModel: SoundLabViewModel) {
     val vocalsGain by viewModel.vocalsGainState.collectAsState()
     val beatsGain by viewModel.beatsGainState.collectAsState()
 
-    Column(
+    LazyColumn(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .background(GlassCardBg, RoundedCornerShape(16.dp))
             .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(bottom = 60.dp)
     ) {
-        Text(
-            text = "AI ANALOG SIGNAL RACK",
-            color = Color.White,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Black
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // XY Performance Modulation Pad (Delay feedback and Reverb Size)
-        Text(
-            text = "XY SOUNDSTAGE WARPER",
-            color = GoldenAmber,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.5.sp,
-            modifier = Modifier.padding(bottom = 4.dp)
-        )
-        XyPerformancePad(
-            delayFeedback = delayFeedback,
-            reverbDecay = reverbDecay,
-            onXChange = { viewModel.setDelayFeedbackLevel(it) },
-            onYChange = { viewModel.setReverbDecayLevel(it) },
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-
-        // Rack sliders
-        RackKnobController("SATURATION OVERDRIVE", drive, 0f..1.5f, String.format("%.2fx", drive + 1.0f), "drive_slider") {
-            viewModel.setDriveLevel(it)
-        }
-        RackKnobController("ATMOSPHERIC REVERB DECAY", reverbDecay, 0.0f..0.85f, String.format("%d%%", (reverbDecay * 100).toInt()), "reverb_slider") {
-            viewModel.setReverbDecayLevel(it)
-        }
-        RackKnobController("STEREO ECHO DELAY FEEDBACK", delayFeedback, 0.0f..0.7f, String.format("%d%%", (delayFeedback * 100).toInt()), "delay_slider") {
-            viewModel.setDelayFeedbackLevel(it)
-        }
-        RackKnobController("DYNAMIC LIMIT ARCHITECTURE", compressThreshold, -40f..0f, String.format("%.1fdB", compressThreshold), "compressor_slider") {
-            viewModel.setCompressorThreshold(it)
-        }
-        RackKnobController("STEREO EXPANSION WIDENESS", wideness, 0.1f..1.0f, String.format("%.0f%%", wideness * 100), "wideness_slider") {
-            viewModel.setWidenessLevel(it)
+        item {
+            Text(
+                text = "CONTINUOUS DSP OVERDRIVE & DELAY SLIDERS RACKS",
+                color = NeonCyan,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 1.2.sp
+            )
         }
 
-        // Mixer faders
-        Spacer(modifier = Modifier.height(10.dp))
-        Divider(color = Color.White.copy(0.08f))
-        Spacer(modifier = Modifier.height(8.dp))
+        // Two Stem Controls (Vocals vs Beats)
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(0.01f)),
+                border = BorderStroke(1.dp, GlassBorder.copy(0.3f)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("STEM CHANNELS MIX DESK", color = GoldenAmber, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                Text("Synth Vocals Gain", color = Color.White, fontSize = 10.sp)
+                                Text(String.format("%.1fx", vocalsGain), color = NeonCyan, fontSize = 10.sp)
+                            }
+                            Slider(value = vocalsGain, onValueChange = { viewModel.setVocalsVolume(it) }, valueRange = 0f..1.5f, colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan))
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                Text("Seq Beats Volume", color = Color.White, fontSize = 10.sp)
+                                Text(String.format("%.1fx", beatsGain), color = NeonCyan, fontSize = 10.sp)
+                            }
+                            Slider(value = beatsGain, onValueChange = { viewModel.setBeatsVolume(it) }, valueRange = 0f..1.5f, colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan))
+                        }
+                    }
+                }
+            }
+        }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
+        // Overdrive & Stereo Wideness
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                    Text("VOCAL GAIN", color = NeonCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                    Text(String.format("%.1fx", vocalsGain), color = NeonCyan, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    Text("Vacuum Valve Overdrive Drive", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(String.format("%.2f SAT", drive), color = HotViolet, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                 }
                 Slider(
-                    value = vocalsGain,
-                    onValueChange = { viewModel.setVocalsVolume(it) },
-                    valueRange = 0.0f..2.0f,
-                    colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan)
+                    value = drive,
+                    onValueChange = { viewModel.setDriveLevel(it) },
+                    valueRange = 0f..1.2f,
+                    colors = SliderDefaults.colors(thumbColor = HotViolet, activeTrackColor = HotViolet),
+                    modifier = Modifier.testTag("slider_drive")
                 )
             }
-            Column(modifier = Modifier.weight(1f)) {
+        }
+
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                    Text("BEATS GAIN", color = HotViolet, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                    Text(String.format("%.1fx", beatsGain), color = HotViolet, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    Text("Stereo Spatial Wideness", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(String.format("%d%% EXP", (wideness * 100).toInt()), color = NeonCyan, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                 }
                 Slider(
-                    value = beatsGain,
-                    onValueChange = { viewModel.setBeatsVolume(it) },
-                    valueRange = 0.0f..2.0f,
-                    colors = SliderDefaults.colors(thumbColor = HotViolet, activeTrackColor = HotViolet)
+                    value = wideness,
+                    onValueChange = { viewModel.setWidenessLevel(it) },
+                    valueRange = 0.1f..1.0f,
+                    colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan),
+                    modifier = Modifier.testTag("slider_wideness")
+                )
+            }
+        }
+
+        // Limiter compressor
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    Text("Digital Dynamics Compressor Limiter", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(String.format("%.1f dB", compressThreshold), color = GoldenAmber, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                }
+                Slider(
+                    value = compressThreshold,
+                    onValueChange = { viewModel.setCompressorThreshold(it) },
+                    valueRange = -40f..0f,
+                    colors = SliderDefaults.colors(thumbColor = GoldenAmber, activeTrackColor = GoldenAmber),
+                    modifier = Modifier.testTag("slider_compress")
+                )
+            }
+        }
+
+        // Reverb & Delay
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    Text("Digital Delay Echo Feedback", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(String.format("%d%% FBCK", (delayFeedback * 100).toInt()), color = NeonCyan, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                }
+                Slider(
+                    value = delayFeedback,
+                    onValueChange = { viewModel.setDelayFeedbackLevel(it) },
+                    valueRange = 0f..0.6f,
+                    colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan),
+                    modifier = Modifier.testTag("slider_delay")
+                )
+            }
+        }
+
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    Text("Physical Reverb Room Space Decay", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(String.format("%.2f SIZE", reverbDecay), color = HotViolet, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                }
+                Slider(
+                    value = reverbDecay,
+                    onValueChange = { viewModel.setReverbDecayLevel(it) },
+                    valueRange = 0f..0.8f,
+                    colors = SliderDefaults.colors(thumbColor = HotViolet, activeTrackColor = HotViolet),
+                    modifier = Modifier.testTag("slider_reverb")
+                )
+            }
+        }
+
+        // World-class XY Pad warper
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "XY MASTER SOUNDSTAGE WARPER INTERNALS",
+                    color = Color.White.copy(0.6f),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                XyPerformancePad(
+                    delayFeedback = delayFeedback,
+                    reverbDecay = reverbDecay,
+                    onXChange = { viewModel.setDelayFeedbackLevel(it) },
+                    onYChange = { viewModel.setReverbDecayLevel(it) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp)
                 )
             }
         }
@@ -910,404 +2348,416 @@ fun XyPerformancePad(
     onYChange: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var padWidth by remember { mutableStateOf(1f) }
-    var padHeight by remember { mutableStateOf(1f) }
+    var padWidth by remember { mutableStateOf(1) }
+    var padHeight by remember { mutableStateOf(1) }
 
     Box(
         modifier = modifier
-            .fillMaxWidth()
-            .height(116.dp)
-            .background(Color(0xFF06070E), RoundedCornerShape(12.dp))
+            .background(Color.Black.copy(0.3f), RoundedCornerShape(12.dp))
             .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
             .onSizeChanged {
-                padWidth = it.width.toFloat().coerceAtLeast(1f)
-                padHeight = it.height.toFloat().coerceAtLeast(1f)
+                padWidth = it.width.coerceAtLeast(1)
+                padHeight = it.height.coerceAtLeast(1)
             }
             .pointerInput(Unit) {
-                detectDragGestures { change, _ ->
+                detectDragGestures { change, dragAmount ->
                     change.consume()
-                    val xPct = (change.position.x / padWidth).coerceIn(0f, 1f)
-                    val yPct = (1f - (change.position.y / padHeight)).coerceIn(0f, 1f)
-                    onXChange(xPct * 0.7f)
-                    onYChange(yPct * 0.85f)
+                    val posX = (change.position.x / padWidth).coerceIn(0f, 1f)
+                    val posY = (1f - (change.position.y / padHeight)).coerceIn(0f, 1f)
+                    onXChange(posX * 0.6f) // Map to actual Delay feedback limit (0.6f)
+                    onYChange(posY * 0.8f) // Map to actual Reverb decay limit (0.8f)
                 }
             }
             .pointerInput(Unit) {
                 detectTapGestures { offset ->
-                    val xPct = (offset.x / padWidth).coerceIn(0f, 1f)
-                    val yPct = (1f - (offset.y / padHeight)).coerceIn(0f, 1f)
-                    onXChange(xPct * 0.7f)
-                    onYChange(yPct * 0.85f)
+                    val posX = (offset.x / padWidth).coerceIn(0f, 1f)
+                    val posY = (1f - (offset.y / padHeight)).coerceIn(0f, 1f)
+                    onXChange(posX * 0.6f)
+                    onYChange(posY * 0.8f)
                 }
             }
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val h = size.height
-            val w = size.width
-
-            // Draw technical grid lines
-            val gridColor = GlassBorder.copy(alpha = 0.12f)
-            val strokeGrid = 1.dp.toPx()
-            val dashPattern = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-
-            for (i in 1..3) {
-                val y = h * (i / 4f)
-                drawLine(
-                    color = gridColor,
-                    start = Offset(0f, y),
-                    end = Offset(w, y),
-                    strokeWidth = strokeGrid,
-                    pathEffect = dashPattern
-                )
+            val gridColor = GlassBorder.copy(alpha = 0.15f)
+            
+            // Draw crossgrids
+            for (x in 1..4) {
+                val posX = (x / 5f) * size.width
+                drawLine(gridColor, Offset(posX, 0f), Offset(posX, size.height))
             }
-            for (i in 1..3) {
-                val x = w * (i / 4f)
-                drawLine(
-                    color = gridColor,
-                    start = Offset(x, 0f),
-                    end = Offset(x, h),
-                    strokeWidth = strokeGrid,
-                    pathEffect = dashPattern
-                )
+            for (y in 1..4) {
+                val posY = (y / 5f) * size.height
+                drawLine(gridColor, Offset(0f, posY), Offset(size.width, posY))
             }
 
-            // Draw concentric background sonar circles
-            drawCircle(
-                color = GlassBorder.copy(0.04f),
-                radius = h * 0.35f,
-                center = Offset(w / 2, h / 2)
-            )
+            // Draw current active crosshead spot
+            val cx = (delayFeedback / 0.6f) * size.width
+            val cy = (1f - (reverbDecay / 0.8f)) * size.height
 
-            // Convert exact floats to 2D drawing positions
-            val pctX = (delayFeedback / 0.7f).coerceIn(0f, 1f)
-            val pctY = (reverbDecay / 0.85f).coerceIn(0f, 1f)
-
-            val targetX = w * pctX
-            val targetY = h * (1f - pctY)
-
-            // Dynamic Crosshair targeting line guides
-            drawLine(
-                color = NeonCyan.copy(0.25f),
-                start = Offset(0f, targetY),
-                end = Offset(w, targetY),
-                strokeWidth = 1.dp.toPx()
-            )
-            drawLine(
-                color = NeonCyan.copy(0.25f),
-                start = Offset(targetX, 0f),
-                end = Offset(targetX, h),
-                strokeWidth = 1.dp.toPx()
-            )
-
-            // Outer target bloom
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(NeonCyan.copy(0.25f), Color.Transparent),
-                    center = Offset(targetX, targetY),
-                    radius = 14.dp.toPx()
-                ),
-                radius = 14.dp.toPx(),
-                center = Offset(targetX, targetY)
-            )
-
-            // Inner core dot
-            drawCircle(
-                color = Color.White,
-                radius = 4.dp.toPx(),
-                center = Offset(targetX, targetY)
-            )
             drawCircle(
                 color = NeonCyan,
-                radius = 4.dp.toPx(),
-                center = Offset(targetX, targetY),
-                style = Stroke(2.dp.toPx())
+                radius = 16.dp.toPx(),
+                center = Offset(cx, cy),
+                style = Stroke(width = 1.5.dp.toPx())
             )
-        }
-
-        // Labels overlay
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(6.dp)
-                .align(Alignment.BottomStart),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "← SLOWER DELAY | FASTER DELAY →",
-                color = Color.White.copy(0.35f),
-                fontSize = 7.5.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = "REVERB SIZE (Y) ↑",
-                color = Color.White.copy(0.35f),
-                fontSize = 7.5.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
+            drawCircle(
+                color = HotViolet,
+                radius = 6.dp.toPx(),
+                center = Offset(cx, cy)
             )
         }
     }
 }
 
 @Composable
-fun RackKnobController(
-    label: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    valueString: String,
-    tag: String,
-    onValueChange: (Float) -> Unit
-) {
-    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+fun LiveVisualizerRack(viewModel: SoundLabViewModel) {
+    val spectrum by viewModel.audioEngine.spectrumFlow.collectAsState()
+    val isSynthPlaying by viewModel.isSynthPlaying.collectAsState()
+    val activeMidiNote = viewModel.audioEngine.activeMidiNote
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.Black.copy(0.4f), RoundedCornerShape(16.dp))
+            .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("60FPS FOURIER SPECTROGRAPH ANALYZER", color = NeonCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Box(modifier = Modifier.background(MintGreen.copy(0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) {
+                Text("LIVE ANALYZER", color = MintGreen, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            }
+        }
+
+        // FFT Spectrum Canvas
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(90.dp)
+                .testTag("fft_analyzer_display_canvas")
+        ) {
+            val brickW = size.width / 10f
+            val spacing = 4.dp.toPx()
+            
+            for (i in 0 until 10) {
+                val dbScalar = spectrum.getOrElse(i) { 0.1f }
+                val heightPx = dbScalar * size.height
+                val rx = i * brickW + spacing / 2f
+                val ry = size.height - heightPx
+                val widthPx = brickW - spacing
+
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(NeonCyan, HotViolet)),
+                    topLeft = Offset(rx, ry),
+                    size = Size(widthPx, heightPx),
+                    cornerRadius = CornerRadius(4.dp.toPx())
+                )
+            }
+        }
+
+        // Oscilloscope Phasing Cathode CRT
+        Spacer(modifier = Modifier.height(4.dp))
+        Text("STEREO PHASING CRT OSCILLOSCOPE", color = Color.White.copy(0.5f), fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .background(Color(0xFF020408), RoundedCornerShape(8.dp))
+                .border(0.5.dp, GlassBorder.copy(0.3f), RoundedCornerShape(8.dp))
+        ) {
+            val strokeW = 1.2f.dp.toPx()
+            val cy = size.height / 2f
+            val path = Path()
+            val subdivisions = 120
+            val stepW = size.width / subdivisions
+            
+            for (i in 0..subdivisions) {
+                val px = i * stepW
+                val anglePrivate = (i.toFloat() / subdivisions) * 8f * PI.toFloat()
+                val phaseOffset = if (isSynthPlaying) (System.currentTimeMillis() % 1000) / 1000f * 2.0f * PI.toFloat() else 0f
+                var waveVal = sin(anglePrivate - phaseOffset) * 0.4f
+                
+                if (activeMidiNote > 0f) {
+                    waveVal += sin(anglePrivate * 2f - phaseOffset) * 0.2f
+                }
+                
+                val py = cy + waveVal * size.height * 0.8f
+                if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+            }
+
+            drawPath(
+                path = path,
+                brush = Brush.horizontalGradient(listOf(HotViolet, NeonCyan)),
+                style = Stroke(width = strokeW)
+            )
+        }
+    }
+}
+
+@Composable
+fun SynthesizerKeyboardController(viewModel: SoundLabViewModel) {
+    val isSynthPlaying by viewModel.isSynthPlaying.collectAsState()
+    val activeMidiNote = viewModel.audioEngine.activeMidiNote
+    val keyboardKeys = viewModel.keyFrequencies
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.Black.copy(0.3f), RoundedCornerShape(16.dp))
+            .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = label,
-                color = Color.White.copy(alpha = 0.8f),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = valueString,
-                color = NeonCyan,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
+            Column {
+                Text("TACTILE VOLTAGE-CONTROLLED OSCILLATOR KEYS", color = HotViolet, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                Text("Interactive digital oscillator hardware keys", color = Color.White.copy(0.4f), fontSize = 8.sp)
+            }
+
+            IconButton(
+                onClick = { viewModel.toggleSynthesizer() },
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(if (isSynthPlaying) NeonCyan else Color.White.copy(0.04f), RoundedCornerShape(50))
+            ) {
+                Text("⚡", color = if (isSynthPlaying) Color.Black else Color.White, fontSize = 12.sp)
+            }
         }
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = range,
-            colors = SliderDefaults.colors(
-                thumbColor = NeonCyan,
-                activeTrackColor = NeonCyan,
-                inactiveTrackColor = Color.White.copy(0.08f)
-            ),
+
+        Row(
             modifier = Modifier
-                .height(28.dp)
-                .testTag(tag)
-        )
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            keyboardKeys.forEach { (noteName, freqValue) ->
+                val isPressed = activeMidiNote == freqValue
+                Box(
+                    modifier = Modifier
+                        .width(44.dp)
+                        .height(110.dp)
+                        .clip(RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
+                        .background(
+                            if (isPressed) {
+                                Brush.verticalGradient(listOf(NeonCyan, ElectricIndigo))
+                            } else {
+                                Brush.verticalGradient(listOf(Color.White, Color.White.copy(0.85f)))
+                            }
+                        )
+                        .border(1.dp, GlassBorder, RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
+                        .pointerInput(noteName) {
+                            detectTapGestures(
+                                onPress = {
+                                    viewModel.playNoteOnPress(freqValue)
+                                    try {
+                                        awaitRelease()
+                                    } finally {
+                                        viewModel.stopNoteOnRelease()
+                                    }
+                                }
+                            )
+                        }
+                        .testTag("key_$noteName"),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    Text(
+                        text = noteName,
+                        color = if (isPressed) Color.White else Color.Black,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
 fun AiStudioAssistantPanel(viewModel: SoundLabViewModel) {
-    var aiFeatureTab by remember { mutableStateOf(0) } // 0: Mastering advisor, 1: Lyrics builder workspace
-    var masteringPromptText by remember { mutableStateOf("") }
-    var lyricsPromptText by remember { mutableStateOf("") }
+    val uiState by viewModel.uiState.collectAsState()
     val activeProject by viewModel.selectedProject.collectAsState()
-    val softwareKeyboardController = LocalSoftwareKeyboardController.current
-
-    val promptSuggestions = listOf(
-        "Crisp Hi-fidelity vocal podcaster",
-        "Deep club synth bass enhancer",
-        "Lofi atmospheric acoustic chamber",
-        "Clear bright vocal with heavy limiter"
-    )
+    var masteringPromptText by remember { mutableStateOf("") }
+    var songwritingThemeText by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .background(GlassCardBg, RoundedCornerShape(16.dp))
             .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
-            .padding(16.dp)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "GEMINI AI COCREATOR",
-                color = NeonCyan,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Black
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            Button(
-                onClick = { aiFeatureTab = if (aiFeatureTab == 0) 1 else 0 },
-                colors = ButtonDefaults.buttonColors(containerColor = ElectricIndigo.copy(alpha = 0.4f)),
-                shape = RoundedCornerShape(50),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                modifier = Modifier.height(24.dp)
-            ) {
-                Text(
-                    text = if (aiFeatureTab == 0) "GO LYRICIST" else "GO MASTERING",
-                    color = Color.White,
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
+        Text(
+            text = "GEMINI 3.5-FLASH AI CO-CREATION ENGINE",
+            color = NeonCyan,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black,
+            fontFamily = FontFamily.Monospace,
+            letterSpacing = 1.2.sp
+        )
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        if (aiFeatureTab == 0) {
-            Text(
-                text = "Describe your audio characteristics. Gemini will instantly synthesize custom filter coefficients, thresholds and effects delay lines:",
-                color = Color.White.copy(alpha = 0.6f),
-                fontSize = 10.sp,
-                lineHeight = 14.sp
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            OutlinedTextField(
-                value = masteringPromptText,
-                onValueChange = { masteringPromptText = it },
-                placeholder = { Text("e.g., Warm female podcaster vocal...", color = Color.Gray, fontSize = 11.sp) },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    focusedBorderColor = NeonCyan,
-                    unfocusedBorderColor = GlassBorder
-                ),
-                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = {
-                    if (masteringPromptText.isNotBlank()) {
-                        viewModel.runAiMasteringAssistant(masteringPromptText)
-                        softwareKeyboardController?.hide()
-                    }
-                }),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .testTag("ai_mastering_input")
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text("SUGGESTIONS:", color = Color.White.copy(0.4f), fontSize = 8.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                promptSuggestions.forEach { suggestion ->
-                    Box(
-                        modifier = Modifier
-                            .background(Color.White.copy(0.06f), RoundedCornerShape(50))
-                            .clickable { masteringPromptText = suggestion }
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(suggestion, color = Color.White, fontSize = 9.sp)
+        // UI States Loader View
+        when (uiState) {
+            is SoundLabUiState.Loading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .background(HotViolet.copy(0.12f), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = HotViolet, strokeWidth = 2.dp)
+                        Text("AI engine query in workflow. Allocating matrix...", color = HotViolet, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Button(
-                onClick = {
-                    if (masteringPromptText.isNotBlank()) {
-                        viewModel.runAiMasteringAssistant(masteringPromptText)
-                        softwareKeyboardController?.hide()
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(36.dp)
-                    .testTag("ai_mastering_submit")
-            ) {
-                Text("RUN AUDIO MASTER ENGINE", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Black)
+            is SoundLabUiState.Success -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MintGreen.copy(0.12f), RoundedCornerShape(8.dp))
+                        .padding(10.dp)
+                ) {
+                    Text(
+                        text = "SUCCESS: ${(uiState as SoundLabUiState.Success).message}",
+                        color = MintGreen,
+                        fontSize = 9.5.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
             }
-
-        } else {
-            Text(
-                text = "Enter song theme or lyrics prompts. Gemini will build complete lyrics maps, chord structures, recommended BPM, and title coordinates:",
-                color = Color.White.copy(alpha = 0.6f),
-                fontSize = 10.sp,
-                lineHeight = 14.sp
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            OutlinedTextField(
-                value = lyricsPromptText,
-                onValueChange = { lyricsPromptText = it },
-                placeholder = { Text("e.g., Cyberpunk flight through neon clouds...", color = Color.Gray, fontSize = 11.sp) },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    focusedBorderColor = HotViolet,
-                    unfocusedBorderColor = GlassBorder
-                ),
-                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = {
-                    if (lyricsPromptText.isNotBlank()) {
-                        viewModel.runAiLyricsGenerator(lyricsPromptText)
-                        softwareKeyboardController?.hide()
-                    }
-                }),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .testTag("ai_lyrics_input")
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Button(
-                onClick = {
-                    if (lyricsPromptText.isNotBlank()) {
-                        viewModel.runAiLyricsGenerator(lyricsPromptText)
-                        softwareKeyboardController?.hide()
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(36.dp)
-                    .testTag("ai_lyrics_submit")
-            ) {
-                Text("GENERATE SONG MATRIX", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black)
+            is SoundLabUiState.Error -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Red.copy(0.15f), RoundedCornerShape(8.dp))
+                        .padding(10.dp)
+                ) {
+                    Text(
+                        text = "ALERT: ${(uiState as SoundLabUiState.Error).throwable.message}",
+                        color = Color.Red,
+                        fontSize = 9.5.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
             }
+            else -> {}
+        }
 
-            activeProject?.lyrics?.let { l ->
-                if (l.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Column(
+        // Section A: AI Intelligent Mastering advisor
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color.White.copy(0.01f)),
+            border = BorderStroke(1.dp, GlassBorder.copy(0.3f)),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("AI MASTERING ASSISTANT PROTOCOL", color = GoldenAmber, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                
+                OutlinedTextField(
+                    value = masteringPromptText,
+                    onValueChange = { masteringPromptText = it },
+                    placeholder = { Text("E.g., Airy jazz vocals with tight compressor and warm delay...", color = Color.Gray, fontSize = 10.5.sp) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NeonCyan,
+                        unfocusedBorderColor = GlassBorder,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .testTag("ai_master_prompt_input"),
+                    textStyle = LocalTextStyle.current.copy(fontSize = 11.sp)
+                )
+
+                Button(
+                    onClick = {
+                        if (masteringPromptText.isNotBlank()) {
+                            viewModel.runAiMasteringAssistant(masteringPromptText)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp)
+                        .testTag("apply_master_advice_button")
+                ) {
+                    Text("GENERATE TECHNICAL DSP PRESET", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 9.5.sp)
+                }
+            }
+        }
+
+        // Section B: Lyrics Sheet Builder
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color.White.copy(0.01f)),
+            border = BorderStroke(1.dp, GlassBorder.copy(0.3f)),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("INTERACTIVE SONG LYRICIST ASSISTANT", color = GoldenAmber, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                
+                OutlinedTextField(
+                    value = songwritingThemeText,
+                    onValueChange = { songwritingThemeText = it },
+                    placeholder = { Text("E.g., Cyberpunk rain city heartbreak progressive house verse...", color = Color.Gray, fontSize = 10.5.sp) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NeonCyan,
+                        unfocusedBorderColor = GlassBorder,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .testTag("songwrite_prompt_input"),
+                    textStyle = LocalTextStyle.current.copy(fontSize = 11.sp)
+                )
+
+                Button(
+                    onClick = {
+                        if (songwritingThemeText.isNotBlank()) {
+                            viewModel.runAiLyricsGenerator(songwritingThemeText)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp)
+                        .testTag("generate_lyrics_button")
+                ) {
+                    Text("AUTO GENERATE VOCAL LYRICS SHEET", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 9.5.sp)
+                }
+
+                if (activeProject != null && activeProject?.lyrics?.isNotBlank() == true) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("SONG SHEET LYRICS:", color = Color.White.copy(0.5f), fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                    
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f)
-                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                            .border(1.dp, GlassBorder.copy(0.3f), RoundedCornerShape(8.dp))
+                            .height(90.dp)
+                            .background(Color.Black.copy(0.2f), RoundedCornerShape(6.dp))
+                            .border(0.5.dp, GlassBorder.copy(0.2f), RoundedCornerShape(6.dp))
+                            .verticalScroll(rememberScrollState())
                             .padding(8.dp)
                     ) {
                         Text(
-                            text = "ACTIVE VOCALS SHEET (Key: ${activeProject?.keySignature}, BPM: ${activeProject?.bpm})",
-                            color = GoldenAmber,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold
+                            text = activeProject?.lyrics ?: "",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                        ) {
-                            item {
-                                Text(
-                                    text = l,
-                                    color = Color.White.copy(0.85f),
-                                    fontSize = 10.sp,
-                                    lineHeight = 14.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
                     }
                 }
             }
@@ -1319,263 +2769,100 @@ fun AiStudioAssistantPanel(viewModel: SoundLabViewModel) {
 fun SessionArchivePanel(viewModel: SoundLabViewModel) {
     val projects by viewModel.allProjects.collectAsState()
     val activeProject by viewModel.selectedProject.collectAsState()
-    var newProjectTitle by remember { mutableStateOf("") }
+    var newProjectNameText by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .background(GlassCardBg, RoundedCornerShape(16.dp))
             .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
-            .padding(16.dp)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        Text(
+            text = "SYSTEM SQLITE SESSION CHANNELS",
+            color = NeonCyan,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black,
+            fontFamily = FontFamily.Monospace,
+            letterSpacing = 1.2.sp
+        )
+
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "AUDIO SESSIONS ARCHIVE",
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Black
+            OutlinedTextField(
+                value = newProjectNameText,
+                onValueChange = { newProjectNameText = it },
+                placeholder = { Text("E.g., Hyperpop Stereo Phasing", color = Color.Gray, fontSize = 11.sp) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = NeonCyan,
+                    unfocusedBorderColor = GlassBorder,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp)
+                    .testTag("input_new_project_name"),
+                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp)
             )
 
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                OutlinedTextField(
-                    value = newProjectTitle,
-                    onValueChange = { newProjectTitle = it },
-                    placeholder = { Text("Project title", color = Color.White.copy(alpha = 0.3f), fontSize = 9.sp) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = NeonCyan,
-                        unfocusedBorderColor = GlassBorder.copy(alpha = 0.4f)
-                    ),
-                    textStyle = LocalTextStyle.current.copy(fontSize = 9.sp),
-                    modifier = Modifier
-                        .width(100.dp)
-                        .height(30.dp)
-                        .testTag("new_project_title_input")
-                )
-                Button(
-                    onClick = {
-                        if (newProjectTitle.isNotBlank()) {
-                            viewModel.createNewProject(newProjectTitle)
-                            newProjectTitle = ""
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MintGreen),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.height(30.dp)
-                ) {
-                    Text("ADD", color = Color.Black, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        if (projects.isEmpty()) {
-            Box(
+            Button(
+                onClick = {
+                    if (newProjectNameText.isNotBlank()) {
+                        viewModel.createNewProject(newProjectNameText)
+                        viewModel.addNotification("Created Project node '$newProjectNameText' inside Room DB")
+                        newProjectNameText = ""
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = HotViolet),
+                shape = RoundedCornerShape(8.dp),
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(8.dp),
-                contentAlignment = Alignment.Center
+                    .height(44.dp)
+                    .testTag("create_project_button")
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Vector cassette outline for nice empty state
-                    Canvas(modifier = Modifier.size(48.dp)) {
-                        drawRoundRect(
-                            color = GlassBorder.copy(alpha = 0.25f),
-                            size = Size(48.dp.toPx(), 28.dp.toPx()),
-                            topLeft = Offset(0f, 10.dp.toPx()),
-                            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
-                            style = Stroke(width = 1.5.dp.toPx())
-                        )
-                        // Left Reel
-                        drawCircle(
-                            color = GlassBorder.copy(alpha = 0.25f),
-                            radius = 6.dp.toPx(),
-                            center = Offset(16.dp.toPx(), 24.dp.toPx()),
-                            style = Stroke(width = 1.dp.toPx())
-                        )
-                        // Right Reel
-                        drawCircle(
-                            color = GlassBorder.copy(alpha = 0.25f),
-                            radius = 6.dp.toPx(),
-                            center = Offset(32.dp.toPx(), 24.dp.toPx()),
-                            style = Stroke(width = 1.dp.toPx())
-                        )
-                    }
-                    Text(
-                        text = "No recorded sessions. Create a project above or load a lyric script to get started.",
-                        color = Color.White.copy(alpha = 0.4f),
-                        fontSize = 10.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                items(projects) { project ->
-                    val isSelected = activeProject?.id == project.id
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                color = if (isSelected) ElectricIndigo.copy(alpha = 0.3f) else Color.White.copy(0.04f),
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                            .border(
-                                1.dp,
-                                if (isSelected) ElectricIndigo else Color.Transparent,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable { viewModel.selectProject(project) }
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = project.title,
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "BPM: ${project.bpm} | Key: ${project.keySignature}",
-                                color = NeonCyan,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        IconButton(
-                            onClick = { viewModel.deleteProject(project.id) },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Text("❌", fontSize = 8.sp)
-                        }
-                    }
-                }
+                Text("CREATE Fresh SESSION", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
             }
         }
-    }
-}
 
-@Composable
-fun SynthesizerKeyboardController(viewModel: SoundLabViewModel) {
-    var keyActiveMap by remember { mutableStateOf(mapOf<String, Boolean>()) }
+        Divider(color = Color.White.copy(0.08f))
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF0C0E18), RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-            .border(
-                1.dp,
-                Brush.verticalGradient(listOf(GlassBorder, Color.Transparent)),
-                RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
-            )
-            .padding(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = "LIVE INTERACTIVE PIANO SYNTH MODULE",
-                color = GoldenAmber,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 0.5.sp
-            )
-            Text(
-                text = "MIDI OSC: QUAD VCO SINE WAVE",
-                color = Color.White.copy(0.4f),
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(58.dp)
-                .testTag("synth_keyboard_row"),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            viewModel.keyFrequencies.forEach { (noteName, frequency) ->
-                val isActive = keyActiveMap[noteName] == true
-
-                Column(
+            items(projects) { project ->
+                val isCurrent = project.id == activeProject?.id
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // Small glowing LED strip above each active key
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                if (isActive) Brush.horizontalGradient(listOf(NeonCyan, HotViolet))
-                                else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
-                            )
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
-                            .background(
-                                brush = if (isActive) {
-                                    Brush.verticalGradient(listOf(GoldenAmber, GoldenAmber.copy(alpha = 0.6f)))
-                                } else {
-                                    Brush.verticalGradient(listOf(Color.White, Color(0xFFE2E6F0)))
-                                }
-                            )
-                            .border(1.dp, SpaceObsidian, RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
-                            .pointerInput(noteName) {
-                                detectTapGestures(
-                                    onPress = {
-                                        keyActiveMap = keyActiveMap.toMutableMap().apply { put(noteName, true) }
-                                        viewModel.playNoteOnPress(frequency)
-                                        tryAwaitRelease()
-                                        keyActiveMap = keyActiveMap.toMutableMap().apply { put(noteName, false) }
-                                        viewModel.stopNoteOnRelease()
-                                    }
-                                )
-                            }
-                            .testTag("key_$noteName"),
-                        contentAlignment = Alignment.BottomCenter
-                    ) {
-                        Text(
-                            text = noteName,
-                            color = Color.Black,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Black,
-                            modifier = Modifier.padding(bottom = 6.dp),
-                            fontFamily = FontFamily.Monospace
+                        .fillMaxWidth()
+                        .background(
+                            if (isCurrent) ElectricIndigo.copy(0.2f) else Color.White.copy(0.01f),
+                            RoundedCornerShape(10.dp)
                         )
+                        .border(
+                            1.dp,
+                            if (isCurrent) NeonCyan else GlassBorder.copy(0.2f),
+                            RoundedCornerShape(10.dp)
+                        )
+                        .clickable { viewModel.selectProject(project) }
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(project.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("BPM: ${project.bpm} // Key: ${project.keySignature}", color = NeonCyan, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace)
+                    }
+
+                    IconButton(
+                        onClick = { viewModel.deleteProject(project.id) },
+                        modifier = Modifier.size(24.dp).testTag("delete_btn_${project.id}")
+                    ) {
+                        Text("❌", fontSize = 9.sp)
                     }
                 }
             }
@@ -1583,32 +2870,3 @@ fun SynthesizerKeyboardController(viewModel: SoundLabViewModel) {
     }
 }
 
-@Composable
-fun FloatingAlertBubble(message: String, color: Color) {
-    Box(
-        modifier = Modifier
-            .background(SpaceObsidian.copy(alpha = 0.92f), RoundedCornerShape(12.dp))
-            .border(1.dp, color, RoundedCornerShape(12.dp))
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(color)
-            )
-            Text(
-                text = message,
-                color = Color.White,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}

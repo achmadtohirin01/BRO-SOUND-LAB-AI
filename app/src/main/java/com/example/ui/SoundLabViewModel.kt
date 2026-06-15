@@ -18,6 +18,7 @@ import com.example.data.database.PresetEntity
 import com.example.data.database.SoundLabDatabase
 import com.example.data.database.SoundLabRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +27,14 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+enum class StartupStage {
+    SPLASH,
+    INITIALIZING,
+    PERMISSION_CHECK,
+    ONBOARDING,
+    MAIN_DASHBOARD
+}
 
 sealed interface SoundLabUiState {
     object Idle : SoundLabUiState
@@ -41,6 +50,60 @@ class SoundLabViewModel(application: Application) : AndroidViewModel(application
 
     // Live Audio Engine
     val audioEngine = AudioEngine()
+
+    // Navigation & Workspace Architecture States
+    private val _startupStage = MutableStateFlow(StartupStage.SPLASH)
+    val startupStage: StateFlow<StartupStage> = _startupStage.asStateFlow()
+
+    private val _currentTab = MutableStateFlow("HOME")
+    val currentTab: StateFlow<String> = _currentTab.asStateFlow()
+
+    private val _isCreateModalOpen = MutableStateFlow(false)
+    val isCreateModalOpen: StateFlow<Boolean> = _isCreateModalOpen.asStateFlow()
+
+    private val _isSideDrawerOpen = MutableStateFlow(false)
+    val isSideDrawerOpen: StateFlow<Boolean> = _isSideDrawerOpen.asStateFlow()
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _selectedProjectCategory = MutableStateFlow("Recent")
+    val selectedProjectCategory: StateFlow<String> = _selectedProjectCategory.asStateFlow()
+
+    private val _isProjectGridView = MutableStateFlow(false)
+    val isProjectGridView: StateFlow<Boolean> = _isProjectGridView.asStateFlow()
+
+    private val _selectedToolId = MutableStateFlow<String?>(null)
+    val selectedToolId: StateFlow<String?> = _selectedToolId.asStateFlow()
+
+    // Persistent Mini Player states
+    private val _miniPlayerPlaying = MutableStateFlow(false)
+    val miniPlayerPlaying: StateFlow<Boolean> = _miniPlayerPlaying.asStateFlow()
+
+    private val _miniPlayerPosition = MutableStateFlow(0.24f)
+    val miniPlayerPosition: StateFlow<Float> = _miniPlayerPosition.asStateFlow()
+
+    private val _miniPlayerVolume = MutableStateFlow(0.8f)
+    val miniPlayerVolume: StateFlow<Float> = _miniPlayerVolume.asStateFlow()
+
+    private val _miniPlayerExpanded = MutableStateFlow(false)
+    val miniPlayerExpanded: StateFlow<Boolean> = _miniPlayerExpanded.asStateFlow()
+
+    // Persistent Recording states
+    private val _isRecordingActive = MutableStateFlow(false)
+    val isRecordingActive: StateFlow<Boolean> = _isRecordingActive.asStateFlow()
+
+    private val _isRecordingPaused = MutableStateFlow(false)
+    val isRecordingPaused: StateFlow<Boolean> = _isRecordingPaused.asStateFlow()
+
+    private val _recordingSeconds = MutableStateFlow(0)
+    val recordingSeconds: StateFlow<Int> = _recordingSeconds.asStateFlow()
+
+    private val _recordingInputDevice = MutableStateFlow("Internal Array Mic (96kHz Ultra)")
+    val recordingInputDevice: StateFlow<String> = _recordingInputDevice.asStateFlow()
+
+    private val _notifications = MutableStateFlow(listOf("DAW Master online", "Ready for Stereo Mix", "Cloud preset sync active"))
+    val notifications: StateFlow<List<String>> = _notifications.asStateFlow()
 
     // UI Interactive States
     val allPresets: StateFlow<List<PresetEntity>> = repository.allPresets
@@ -93,6 +156,149 @@ class SoundLabViewModel(application: Application) : AndroidViewModel(application
                 }
             }
         }
+
+        // Auto transition splash screen -> initialize stages
+        viewModelScope.launch {
+            delay(1500)
+            if (_startupStage.value == StartupStage.SPLASH) {
+                _startupStage.value = StartupStage.INITIALIZING
+                delay(1200)
+                _startupStage.value = StartupStage.PERMISSION_CHECK
+            }
+        }
+
+        // Active Player timer feedback
+        viewModelScope.launch {
+            while (true) {
+                delay(250)
+                if (_miniPlayerPlaying.value) {
+                    val nextPos = _miniPlayerPosition.value + 0.004f
+                    _miniPlayerPosition.value = if (nextPos > 1.0f) 0f else nextPos
+                }
+            }
+        }
+
+        // Active Recording timer feedback
+        viewModelScope.launch {
+            while (true) {
+                delay(1000)
+                if (_isRecordingActive.value && !_isRecordingPaused.value) {
+                    _recordingSeconds.value = _recordingSeconds.value + 1
+                }
+            }
+        }
+    }
+
+    fun setStartupStage(stage: StartupStage) {
+        _startupStage.value = stage
+    }
+
+    fun setCurrentTab(tab: String) {
+        _currentTab.value = tab
+    }
+
+    fun setCreateModalOpen(open: Boolean) {
+        _isCreateModalOpen.value = open
+    }
+
+    fun setSideDrawerOpen(open: Boolean) {
+        _isSideDrawerOpen.value = open
+    }
+
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    fun setProjectCategory(category: String) {
+        _selectedProjectCategory.value = category
+    }
+
+    fun toggleProjectGridView() {
+        _isProjectGridView.value = !_isProjectGridView.value
+    }
+
+    fun setSelectedToolId(toolId: String?) {
+        _selectedToolId.value = toolId
+    }
+
+    fun toggleMiniPlayerPlaying() {
+        _miniPlayerPlaying.value = !_miniPlayerPlaying.value
+    }
+
+    fun setMiniPlayerPosition(position: Float) {
+        _miniPlayerPosition.value = position
+    }
+
+    fun setMiniPlayerVolume(volume: Float) {
+        _miniPlayerVolume.value = volume
+    }
+
+    fun setMiniPlayerExpanded(expanded: Boolean) {
+        _miniPlayerExpanded.value = expanded
+    }
+
+    fun startRecording() {
+        _isRecordingActive.value = true
+        _isRecordingPaused.value = false
+        _recordingSeconds.value = 0
+        addNotification("Recording started: ${_recordingInputDevice.value}")
+    }
+
+    fun pauseToggleRecording() {
+        if (_isRecordingActive.value) {
+            _isRecordingPaused.value = !_isRecordingPaused.value
+            if (_isRecordingPaused.value) {
+                addNotification("Recording paused")
+            } else {
+                addNotification("Recording resumed")
+            }
+        }
+    }
+
+    fun stopAndSaveRecording(title: String) {
+        if (_isRecordingActive.value) {
+            val seconds = _recordingSeconds.value
+            _isRecordingActive.value = false
+            _isRecordingPaused.value = false
+            _recordingSeconds.value = 0
+            
+            // Save recording project
+            viewModelScope.launch {
+                val defaultProject = AudioProjectEntity(
+                    title = if (title.isBlank()) "Recording Clip #${System.currentTimeMillis() % 1000}" else title,
+                    bpm = 110,
+                    keySignature = "A Minor",
+                    lyrics = "[Recording Session]\nDuration: ${seconds / 60}:${String.format("%02d", seconds % 60)}\nInput: ${_recordingInputDevice.value}",
+                    isRecordingSample = true
+                )
+                val id = repository.insertProject(defaultProject)
+                val created = repository.getProjectById(id.toInt())
+                if (created != null) {
+                    _selectedProject.value = created
+                }
+                addNotification("Recording saved as '${defaultProject.title}'")
+            }
+        }
+    }
+
+    fun discardRecording() {
+        _isRecordingActive.value = false
+        _isRecordingPaused.value = false
+        _recordingSeconds.value = 0
+        addNotification("Recording discarded")
+    }
+
+    fun addNotification(message: String) {
+        val current = _notifications.value.toMutableList()
+        current.add(0, message)
+        if (current.size > 20) {
+            current.removeAt(current.lastIndex)
+        }
+        _notifications.value = current
+    }
+
+    fun clearNotifications() {
+        _notifications.value = emptyList()
     }
 
     private suspend fun createPrebakedPresets() {
